@@ -19,7 +19,7 @@ Default development account:
 - Email: `admin@skillhub.com`
 - Password: `Admin123!`
 
-If login fails locally, reset and seed the SQLite database:
+If login fails locally, reset and seed the PostgreSQL database:
 
 ```powershell
 cd backend
@@ -28,7 +28,7 @@ npm run db:seed
 npm start
 ```
 
-Copy `.env.example` to `.env` and replace `JWT_SECRET` before deployment. SQLite is intended for local/single-server use; switch Prisma's datasource to PostgreSQL for multi-instance production deployment.
+Copy `.env.example` to `.env`, configure the pooled `DATABASE_URL`, the migration `DIRECT_URL`, and replace `JWT_SECRET` before deployment. The API uses PostgreSQL in development and production.
 
 ## Main endpoints
 
