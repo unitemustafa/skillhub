@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillhub/core/network/api_exception.dart';
@@ -13,15 +12,14 @@ class ApiClient {
   static const _tokenKey = 'skillhub_auth_token';
   static const _requestTimeout = Duration(seconds: 8);
   static const _configuredBaseUrl = String.fromEnvironment('API_BASE_URL');
+  static const _productionBaseUrl =
+      'https://skillhub-backend-5sqjd.ondigitalocean.app/api/v1';
 
   static String get _defaultBaseUrl {
-    if (_configuredBaseUrl.isNotEmpty) {
-      return _configuredBaseUrl.replaceFirst(RegExp(r'/+$'), '');
-    }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:3000/api/v1';
-    }
-    return 'http://localhost:3000/api/v1';
+    final value = _configuredBaseUrl.isNotEmpty
+        ? _configuredBaseUrl
+        : _productionBaseUrl;
+    return value.replaceFirst(RegExp(r'/+$'), '');
   }
 
   final http.Client _client;
