@@ -49,3 +49,17 @@ All endpoints except health and login require `Authorization: Bearer <token>`.
 | GET | `/dashboard` | Aggregated dashboard stats |
 
 Run `npm test` after seeding to execute the API smoke tests.
+
+## Production deployment
+
+Build the API, apply pending migrations, and start the server with:
+
+```sh
+npm ci
+npm run build
+npm run db:migrate
+npm start
+```
+
+Run `npm run db:migrate` as a pre-deploy command. The web service run command
+must remain `npm start`, and its health check path is `/api/v1/health`.
