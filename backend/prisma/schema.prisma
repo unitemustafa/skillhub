@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Player {
+  id               String         @id
+  name             String
+  birthDate        DateTime
+  phone            String
+  guardianName     String
+  guardianRelation String
+  guardianJob      String?
+  isActive         Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  subscriptions    Subscription[]
+  evaluations      Evaluation[]
+  messages         Message[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  playerId  String
+  amount    Float
+  startDate DateTime
+  endDate   DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([endDate])
+}
+
+model Evaluation {
+  id          String   @id @default(cuid())
+  playerId    String
+  coach       String
+  evaluationDate DateTime @default(now())
+  fitness     Int
+  speed       Int
+  skill       Int
+  discipline  Int
+  teamwork    Int
+  notes       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([evaluationDate])
+}
+
+model FinanceTransaction {
+  id          String   @id @default(cuid())
+  type        String
+  category    String
+  amount      Float
+  description String
+  occurredAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([occurredAt])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  playerId    String?
+  recipient   String
+  channel     String
+  body        String
+  status      String   @default("pending")
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  player      Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@index([playerId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  type      String   @default("info")
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
