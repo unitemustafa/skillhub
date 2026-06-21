@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 const date = z.coerce.date();
 const optionalText = z.string().trim().optional().nullable();
@@ -12,7 +12,8 @@ export const userSchema = z.object({
   name: z.string().trim().min(2),
   email: z.email().transform((value) => value.toLowerCase()),
   password: z.string().min(6),
-  role: z.enum(['admin', 'user']).default('user'),
+  role: z.enum(["admin", "user"]).default("user"),
+  activationPlan: z.enum(["monthly", "yearly", "permanent"]).default("monthly"),
 });
 
 export const playerSchema = z.object({
@@ -34,8 +35,8 @@ export const subscriptionSchema = z
     notes: optionalText,
   })
   .refine((value) => value.endDate > value.startDate, {
-    message: 'تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية',
-    path: ['endDate'],
+    message: "تاريخ الانتهاء يجب أن يكون بعد تاريخ البداية",
+    path: ["endDate"],
   });
 
 export const evaluationSchema = z.object({
@@ -47,11 +48,11 @@ export const evaluationSchema = z.object({
   skill: z.coerce.number().int().min(1).max(10),
   discipline: z.coerce.number().int().min(1).max(10),
   teamwork: z.coerce.number().int().min(1).max(10),
-  notes: z.string().trim().default(''),
+  notes: z.string().trim().default(""),
 });
 
 export const transactionSchema = z.object({
-  type: z.enum(['income', 'expense']),
+  type: z.enum(["income", "expense"]),
   category: z.string().trim().min(1),
   amount: z.coerce.number().positive(),
   description: z.string().trim().min(2),
@@ -61,7 +62,7 @@ export const transactionSchema = z.object({
 export const messageSchema = z.object({
   playerId: z.string().optional().nullable(),
   recipient: z.string().trim().min(5),
-  channel: z.enum(['whatsapp', 'sms']),
+  channel: z.enum(["whatsapp", "sms"]),
   body: z.string().trim().min(1).max(500),
   scheduledAt: date.optional().nullable(),
 });

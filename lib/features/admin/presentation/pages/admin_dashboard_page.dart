@@ -38,6 +38,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late Future<List<_AdminUser>> _usersFuture;
   bool _isCreating = false;
   bool _usingLocalUsers = false;
+  String _activationPlan = 'monthly';
 
   @override
   void initState() {
@@ -115,7 +116,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       email: _emailController.text.trim().toLowerCase(),
       role: 'user',
       source: 'محلي',
+      activationPlan: _activationPlan,
+      activationStartsAt: DateTime.now(),
+      activationEndsAt: _activationEndsAt(_activationPlan),
       createdAt: DateTime.now(),
+      playersCount: 0,
+      monthlyRevenue: 0,
+      yearlyRevenue: 0,
     );
 
     setState(() {
@@ -128,6 +135,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         'email': user.email,
         'password': _passwordController.text,
         'role': user.role,
+        'activationPlan': user.activationPlan,
       });
     } on ApiException {
       await _saveLocalUser(user);
@@ -136,6 +144,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         _nameController.clear();
         _emailController.clear();
         _passwordController.clear();
+        _activationPlan = 'monthly';
         SnackbarUtils.showSuccess(context, 'تم إنشاء حساب العميل');
         setState(() {
           _isCreating = false;
@@ -143,6 +152,69 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         });
       }
     }
+  }
+
+  Future<void> _deleteLocalUser(_AdminUser user) async {
+    final users = (await _loadLocalUsers())
+        .where((item) => item.email.toLowerCase() != user.email.toLowerCase())
+        .toList();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _localUsersKey,
+      users.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+  }
+
+  Future<void> _deleteUser(_AdminUser user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف الحساب'),
+        content: Text(
+          'سيتم حذف حساب ${user.name} وكل بياناته المرتبطة. هل تريد المتابعة؟',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      if (user.isLocal) {
+        await _deleteLocalUser(user);
+      } else {
+        await _apiClient.delete('/users/${user.id}');
+      }
+      if (!mounted) return;
+      SnackbarUtils.showSuccess(context, 'تم حذف الحساب');
+      setState(() {
+        _usersFuture = _loadUsers();
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      SnackbarUtils.showError(context, error.message);
+    }
+  }
+
+  DateTime? _activationEndsAt(String plan) {
+    final now = DateTime.now();
+    return switch (plan) {
+      'monthly' => DateTime(now.year, now.month + 1, now.day),
+      'yearly' => DateTime(now.year + 1, now.month, now.day),
+      _ => null,
+    };
   }
 
   Future<void> _logout() async {
@@ -239,6 +311,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     nameController: _nameController,
                     emailController: _emailController,
                     passwordController: _passwordController,
+                    activationPlan: _activationPlan,
+                    onActivationPlanChanged: (value) {
+                      setState(() {
+                        _activationPlan = value;
+                      });
+                    },
                     isCreating: _isCreating,
                     onCreate: _createUser,
                   ),
@@ -249,7 +327,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   else
-                    _UsersCard(users: users, onUserTap: _openUserOverview),
+                    _UsersCard(
+                      users: users,
+                      onUserTap: _openUserOverview,
+                      onUserDelete: _deleteUser,
+                    ),
                 ],
               );
             },
@@ -336,35 +418,36 @@ class _AdminUserOverviewPage extends StatelessWidget {
               value: _formatDate(user.createdAt),
             ),
             const SizedBox(height: 10),
-            const _OverviewRow(
-              icon: Iconsax.tick_circle,
-              label: 'الحالة',
-              value: 'نشط',
-            ),
-            const SizedBox(height: 10),
             _OverviewRow(
-              icon: Iconsax.cloud_connection,
-              label: 'مصدر البيانات',
-              value: user.source,
-            ),
-            const SizedBox(height: 10),
-            _OverviewRow(
-              icon: Iconsax.key,
-              label: 'كود الحساب',
-              value: user.accountCode,
-              ltrValue: true,
-            ),
-            const SizedBox(height: 10),
-            const _OverviewRow(
-              icon: Iconsax.shield_tick,
-              label: 'الصلاحيات',
-              value: 'استخدام التطبيق',
-            ),
-            const SizedBox(height: 10),
-            _OverviewRow(
-              icon: Iconsax.activity,
+              icon: Iconsax.timer_1,
               label: 'مدة التفعيل',
-              value: '${user.activeDays} يوم',
+              value: user.activationPlanLabel,
+            ),
+            const SizedBox(height: 10),
+            _OverviewRow(
+              icon: Iconsax.calendar_tick,
+              label: 'نهاية التفعيل',
+              value: user.activationEndsAt == null
+                  ? 'دائم'
+                  : _formatDate(user.activationEndsAt!),
+            ),
+            const SizedBox(height: 10),
+            _OverviewRow(
+              icon: Iconsax.profile_2user,
+              label: 'عدد اللاعبين',
+              value: '${user.playersCount}',
+            ),
+            const SizedBox(height: 10),
+            _OverviewRow(
+              icon: Iconsax.money,
+              label: 'إيراد الشهر',
+              value: user.formatMoney(user.monthlyRevenue),
+            ),
+            const SizedBox(height: 10),
+            _OverviewRow(
+              icon: Iconsax.chart_2,
+              label: 'إيراد السنة',
+              value: user.formatMoney(user.yearlyRevenue),
             ),
           ],
         ),
@@ -441,6 +524,8 @@ class _CreateUserCard extends StatelessWidget {
     required this.nameController,
     required this.emailController,
     required this.passwordController,
+    required this.activationPlan,
+    required this.onActivationPlanChanged,
     required this.isCreating,
     required this.onCreate,
   });
@@ -449,6 +534,8 @@ class _CreateUserCard extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
+  final String activationPlan;
+  final ValueChanged<String> onActivationPlanChanged;
   final bool isCreating;
   final VoidCallback onCreate;
 
@@ -516,6 +603,24 @@ class _CreateUserCard extends StatelessWidget {
                 return null;
               },
             ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: activationPlan,
+              decoration: const InputDecoration(
+                labelText: 'مدة تفعيل الحساب',
+                prefixIcon: Icon(Iconsax.timer_1),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'monthly', child: Text('شهري')),
+                DropdownMenuItem(value: 'yearly', child: Text('سنوي')),
+                DropdownMenuItem(value: 'permanent', child: Text('دائم')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  onActivationPlanChanged(value);
+                }
+              },
+            ),
             const SizedBox(height: 16),
             SizedBox(
               height: 52,
@@ -542,10 +647,15 @@ class _CreateUserCard extends StatelessWidget {
 }
 
 class _UsersCard extends StatelessWidget {
-  const _UsersCard({required this.users, required this.onUserTap});
+  const _UsersCard({
+    required this.users,
+    required this.onUserTap,
+    required this.onUserDelete,
+  });
 
   final List<_AdminUser> users;
   final ValueChanged<_AdminUser> onUserTap;
+  final ValueChanged<_AdminUser> onUserDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -592,7 +702,21 @@ class _UsersCard extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 subtitle: Text(user.email, textDirection: TextDirection.ltr),
-                trailing: const Icon(Iconsax.arrow_left_2, size: 18),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'حذف الحساب',
+                      onPressed: () => onUserDelete(user),
+                      icon: const Icon(
+                        Iconsax.trash,
+                        color: AppColors.red,
+                        size: 20,
+                      ),
+                    ),
+                    const Icon(Iconsax.arrow_left_2, size: 18),
+                  ],
+                ),
               ),
             ),
         ],
@@ -656,20 +780,42 @@ class _AdminUser {
     required this.email,
     required this.role,
     required this.source,
+    required this.activationPlan,
+    required this.activationStartsAt,
+    required this.activationEndsAt,
     required this.createdAt,
+    required this.playersCount,
+    required this.monthlyRevenue,
+    required this.yearlyRevenue,
   });
 
   factory _AdminUser.fromJson(Map<String, dynamic> json, {String? source}) {
     final email = json['email']?.toString() ?? '';
+    final stats = json['stats'] is Map
+        ? Map<String, dynamic>.from(json['stats'] as Map)
+        : const <String, dynamic>{};
+    final createdAt =
+        DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+        DateTime.now();
     return _AdminUser(
       id: json['id']?.toString() ?? email,
       name: json['name']?.toString() ?? '',
       email: email,
       role: json['role']?.toString() ?? 'user',
       source: source ?? json['source']?.toString() ?? 'محلي',
-      createdAt:
-          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
-          DateTime.now(),
+      activationPlan: json['activationPlan']?.toString() ?? 'monthly',
+      activationStartsAt:
+          DateTime.tryParse(json['activationStartsAt']?.toString() ?? '') ??
+          createdAt,
+      activationEndsAt: DateTime.tryParse(
+        json['activationEndsAt']?.toString() ?? '',
+      ),
+      createdAt: createdAt,
+      playersCount: int.tryParse(stats['playersCount']?.toString() ?? '') ?? 0,
+      monthlyRevenue:
+          double.tryParse(stats['monthlyRevenue']?.toString() ?? '') ?? 0,
+      yearlyRevenue:
+          double.tryParse(stats['yearlyRevenue']?.toString() ?? '') ?? 0,
     );
   }
 
@@ -680,7 +826,15 @@ class _AdminUser {
       'email': email,
       'role': role,
       'source': source,
+      'activationPlan': activationPlan,
+      'activationStartsAt': activationStartsAt.toIso8601String(),
+      'activationEndsAt': activationEndsAt?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
+      'stats': {
+        'playersCount': playersCount,
+        'monthlyRevenue': monthlyRevenue,
+        'yearlyRevenue': yearlyRevenue,
+      },
     };
   }
 
@@ -689,20 +843,28 @@ class _AdminUser {
     return trimmed.isEmpty ? '?' : trimmed.characters.first;
   }
 
-  String get accountCode {
-    final clean = id.isNotEmpty ? id : email;
-    return clean.length <= 10 ? clean : clean.substring(0, 10).toUpperCase();
+  bool get isLocal => source == 'محلي' || id.startsWith('local-');
+
+  String get activationPlanLabel {
+    return switch (activationPlan) {
+      'yearly' => 'سنوي',
+      'permanent' => 'دائم',
+      _ => 'شهري',
+    };
   }
 
-  int get activeDays {
-    final days = DateTime.now().difference(createdAt).inDays;
-    return days < 1 ? 1 : days;
-  }
+  String formatMoney(double value) => '${value.toStringAsFixed(0)} جنيه';
 
   final String id;
   final String name;
   final String email;
   final String role;
   final String source;
+  final String activationPlan;
+  final DateTime activationStartsAt;
+  final DateTime? activationEndsAt;
   final DateTime createdAt;
+  final int playersCount;
+  final double monthlyRevenue;
+  final double yearlyRevenue;
 }

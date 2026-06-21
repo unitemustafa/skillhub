@@ -1,18 +1,13 @@
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 const admins = [
   {
-    email: 'mustafa@admin.com',
-    password: '01266666610',
-    name: 'مدير التطبيق',
-  },
-  {
-    email: 'admin@skillhub.com',
-    password: 'Admin123!',
-    name: 'مدير النظام',
+    email: "mustafa@admin.com",
+    password: "01266666610",
+    name: "مدير التطبيق",
   },
 ] as const;
 const adminEmail = admins[0].email;
@@ -20,42 +15,42 @@ const adminPassword = admins[0].password;
 
 const players = [
   {
-    id: 'Y-0066',
-    name: 'معتز بالله محمود',
-    birthDate: '2010-12-17',
-    phone: '01064610345',
-    guardianName: 'شيماء محمود',
-    guardianRelation: 'أم',
-    guardianJob: 'مدرسة',
+    id: "Y-0066",
+    name: "معتز بالله محمود",
+    birthDate: "2010-12-17",
+    phone: "01064610345",
+    guardianName: "شيماء محمود",
+    guardianRelation: "أم",
+    guardianJob: "مدرسة",
     isActive: true,
   },
   {
-    id: 'Y-0065',
-    name: 'سومية أحمد سيد',
-    birthDate: '2014-04-11',
-    phone: '01009695550',
-    guardianName: 'أحمد سيد',
-    guardianRelation: 'أب',
-    guardianJob: 'محاسب',
+    id: "Y-0065",
+    name: "سومية أحمد سيد",
+    birthDate: "2014-04-11",
+    phone: "01009695550",
+    guardianName: "أحمد سيد",
+    guardianRelation: "أب",
+    guardianJob: "محاسب",
     isActive: true,
   },
   {
-    id: 'Y-0064',
-    name: 'أنس أحمد سيد',
-    birthDate: '2018-01-20',
-    phone: '01009695550',
-    guardianName: 'أحمد سيد',
-    guardianRelation: 'أب',
-    guardianJob: 'محاسب',
+    id: "Y-0064",
+    name: "أنس أحمد سيد",
+    birthDate: "2018-01-20",
+    phone: "01009695550",
+    guardianName: "أحمد سيد",
+    guardianRelation: "أب",
+    guardianJob: "محاسب",
     isActive: false,
   },
   {
-    id: 'Y-0063',
-    name: 'يحيى جابر محمد',
-    birthDate: '2014-03-08',
-    phone: '01018475533',
-    guardianName: 'جابر محمد',
-    guardianRelation: 'أب',
+    id: "Y-0063",
+    name: "يحيى جابر محمد",
+    birthDate: "2014-03-08",
+    phone: "01018475533",
+    guardianName: "جابر محمد",
+    guardianRelation: "أب",
     guardianJob: null,
     isActive: true,
   },
@@ -67,37 +62,26 @@ async function main() {
   const primaryAdmin = await prisma.user.upsert({
     where: { email: adminEmail },
     update: {
-      name: 'مدير النظام',
+      name: "مدير النظام",
       passwordHash,
-      role: 'admin',
+      role: "admin",
+      activationPlan: "permanent",
+      activationStartsAt: new Date(),
+      activationEndsAt: null,
     },
     create: {
-      name: 'مدير النظام',
+      name: "مدير النظام",
       email: adminEmail,
       passwordHash,
-      role: 'admin',
+      role: "admin",
+      activationPlan: "permanent",
+      activationStartsAt: new Date(),
+      activationEndsAt: null,
     },
   });
   const ownerId = primaryAdmin.id;
 
-  for (const admin of admins.slice(1)) {
-    const passwordHash = await bcrypt.hash(admin.password, 12);
-
-    await prisma.user.upsert({
-      where: { email: admin.email },
-      update: {
-        name: admin.name,
-        passwordHash,
-        role: 'admin',
-      },
-      create: {
-        name: admin.name,
-        email: admin.email,
-        passwordHash,
-        role: 'admin',
-      },
-    });
-  }
+  await prisma.user.deleteMany({ where: { email: { not: adminEmail } } });
 
   for (const player of players) {
     await prisma.player.upsert({
@@ -128,11 +112,11 @@ async function main() {
     await prisma.subscription.create({
       data: {
         ownerId,
-        playerId: 'Y-0066',
+        playerId: "Y-0066",
         amount: 500,
         startDate: now,
         endDate,
-        notes: 'اشتراك شهري',
+        notes: "اشتراك شهري",
       },
     });
 
@@ -140,17 +124,17 @@ async function main() {
       data: [
         {
           ownerId,
-          type: 'income',
-          category: 'subscription',
+          type: "income",
+          category: "subscription",
           amount: 500,
-          description: 'اشتراك اللاعب Y-0066',
+          description: "اشتراك اللاعب Y-0066",
         },
         {
           ownerId,
-          type: 'expense',
-          category: 'equipment',
+          type: "expense",
+          category: "equipment",
           amount: 150,
-          description: 'شراء أدوات تدريب',
+          description: "شراء أدوات تدريب",
         },
       ],
     });
@@ -160,14 +144,14 @@ async function main() {
     await prisma.evaluation.create({
       data: {
         ownerId,
-        playerId: 'Y-0066',
-        coach: 'كابتن محمد',
+        playerId: "Y-0066",
+        coach: "كابتن محمد",
         fitness: 8,
         speed: 7,
         skill: 9,
         discipline: 8,
         teamwork: 9,
-        notes: 'تطور واضح في التحكم بالكرة والالتزام بالتعليمات.',
+        notes: "تطور واضح في التحكم بالكرة والالتزام بالتعليمات.",
       },
     });
   }
@@ -177,15 +161,15 @@ async function main() {
       data: [
         {
           ownerId,
-          title: 'اشتراك يقترب من الانتهاء',
-          body: 'اشتراك معتز بالله ينتهي خلال 7 أيام',
-          type: 'subscription',
+          title: "اشتراك يقترب من الانتهاء",
+          body: "اشتراك معتز بالله ينتهي خلال 7 أيام",
+          type: "subscription",
         },
         {
           ownerId,
-          title: 'تقييم جديد',
-          body: 'تم تسجيل تقييم جديد للاعب معتز بالله',
-          type: 'evaluation',
+          title: "تقييم جديد",
+          body: "تم تسجيل تقييم جديد للاعب معتز بالله",
+          type: "evaluation",
         },
       ],
     });
