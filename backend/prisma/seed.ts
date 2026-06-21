@@ -64,7 +64,7 @@ const players = [
 async function main() {
   const passwordHash = await bcrypt.hash(adminPassword, 12);
 
-  await prisma.user.upsert({
+  const primaryAdmin = await prisma.user.upsert({
     where: { email: adminEmail },
     update: {
       name: 'مدير النظام',
@@ -78,6 +78,7 @@ async function main() {
       role: 'admin',
     },
   });
+  const ownerId = primaryAdmin.id;
 
   for (const admin of admins.slice(1)) {
     const passwordHash = await bcrypt.hash(admin.password, 12);
@@ -109,21 +110,24 @@ async function main() {
         guardianRelation: player.guardianRelation,
         guardianJob: player.guardianJob,
         isActive: player.isActive,
+        ownerId,
       },
       create: {
         ...player,
+        ownerId,
         birthDate: new Date(player.birthDate),
       },
     });
   }
 
-  if ((await prisma.subscription.count()) === 0) {
+  if ((await prisma.subscription.count({ where: { ownerId } })) === 0) {
     const now = new Date();
     const endDate = new Date(now);
     endDate.setMonth(endDate.getMonth() + 1);
 
     await prisma.subscription.create({
       data: {
+        ownerId,
         playerId: 'Y-0066',
         amount: 500,
         startDate: now,
@@ -135,12 +139,14 @@ async function main() {
     await prisma.financeTransaction.createMany({
       data: [
         {
+          ownerId,
           type: 'income',
           category: 'subscription',
           amount: 500,
           description: 'اشتراك اللاعب Y-0066',
         },
         {
+          ownerId,
           type: 'expense',
           category: 'equipment',
           amount: 150,
@@ -150,9 +156,10 @@ async function main() {
     });
   }
 
-  if ((await prisma.evaluation.count()) === 0) {
+  if ((await prisma.evaluation.count({ where: { ownerId } })) === 0) {
     await prisma.evaluation.create({
       data: {
+        ownerId,
         playerId: 'Y-0066',
         coach: 'كابتن محمد',
         fitness: 8,
@@ -165,15 +172,17 @@ async function main() {
     });
   }
 
-  if ((await prisma.notification.count()) === 0) {
+  if ((await prisma.notification.count({ where: { ownerId } })) === 0) {
     await prisma.notification.createMany({
       data: [
         {
+          ownerId,
           title: 'اشتراك يقترب من الانتهاء',
           body: 'اشتراك معتز بالله ينتهي خلال 7 أيام',
           type: 'subscription',
         },
         {
+          ownerId,
           title: 'تقييم جديد',
           body: 'تم تسجيل تقييم جديد للاعب معتز بالله',
           type: 'evaluation',

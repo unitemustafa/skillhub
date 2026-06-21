@@ -10,12 +10,18 @@ class PlayersAppBar extends StatelessWidget {
     required this.selectedBirthYear,
     required this.availableBirthYears,
     required this.onBirthYearChanged,
+    required this.searchController,
+    required this.searchQuery,
+    required this.onSearchChanged,
     this.showBackButton = true,
   });
 
   final int? selectedBirthYear;
   final List<int> availableBirthYears;
   final ValueChanged<int?> onBirthYearChanged;
+  final TextEditingController searchController;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
   final bool showBackButton;
 
   @override
@@ -53,14 +59,29 @@ class PlayersAppBar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const TextField(
+              TextField(
+                controller: searchController,
+                onChanged: onSearchChanged,
                 decoration: InputDecoration(
                   hintText: 'دور على لاعب...',
                   fillColor: AppColors.white,
-                  prefixIcon: Icon(
+                  prefixIcon: const Icon(
                     Iconsax.search_normal,
                     color: AppColors.mutedText,
                   ),
+                  suffixIcon: searchQuery.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'مسح البحث',
+                          onPressed: () {
+                            searchController.clear();
+                            onSearchChanged('');
+                          },
+                          icon: const Icon(
+                            Iconsax.close_circle,
+                            color: AppColors.mutedText,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 12),

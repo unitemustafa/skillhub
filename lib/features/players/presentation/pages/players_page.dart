@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:iconsax/iconsax.dart';
@@ -21,8 +23,11 @@ class PlayersPage extends StatefulWidget {
 
 class _PlayersPageState extends State<PlayersPage> {
   final _apiClient = ApiClient();
+  final _searchController = TextEditingController();
   final ValueNotifier<bool> _isFabVisible = ValueNotifier<bool>(true);
   int? _selectedBirthYear;
+  String _query = '';
+  Timer? _searchDebounce;
   late Future<List<PlayerSummary>> _playersFuture;
 
   @override
@@ -32,7 +37,11 @@ class _PlayersPageState extends State<PlayersPage> {
   }
 
   Future<List<PlayerSummary>> _loadPlayers() async {
-    final response = await _apiClient.get('/players', query: {'limit': '100'});
+    final search = _query.trim();
+    final response = await _apiClient.get(
+      '/players',
+      query: {'limit': '100', if (search.isNotEmpty) 'search': search},
+    );
     final items = response is Map<String, dynamic>
         ? response['items'] as List<dynamic>? ?? const []
         : const [];
@@ -47,6 +56,19 @@ class _PlayersPageState extends State<PlayersPage> {
       _playersFuture = _loadPlayers();
     });
     await _playersFuture;
+  }
+
+  void _handleSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (!mounted || _query == value) {
+        return;
+      }
+      setState(() {
+        _query = value;
+        _playersFuture = _loadPlayers();
+      });
+    });
   }
 
   List<PlayerSummary> _visiblePlayers(
@@ -89,6 +111,8 @@ class _PlayersPageState extends State<PlayersPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _isFabVisible.dispose();
     super.dispose();
   }
@@ -137,6 +161,9 @@ class _PlayersPageState extends State<PlayersPage> {
                     PlayersAppBar(
                       selectedBirthYear: selectedBirthYear,
                       availableBirthYears: birthYears,
+                      searchController: _searchController,
+                      searchQuery: _query,
+                      onSearchChanged: _handleSearchChanged,
                       showBackButton: widget.showBackButton,
                       onBirthYearChanged: (year) {
                         if (_selectedBirthYear == year) {

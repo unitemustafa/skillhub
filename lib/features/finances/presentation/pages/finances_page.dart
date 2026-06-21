@@ -16,8 +16,10 @@ class FinancesPage extends StatefulWidget {
 
 class _FinancesPageState extends State<FinancesPage> {
   final _apiClient = ApiClient();
+  final _searchController = TextEditingController();
   String _filter = 'الكل';
   String _period = 'هذا الشهر';
+  String _query = '';
   late Future<List<_Transaction>> _transactionsFuture;
 
   @override
@@ -36,12 +38,29 @@ class _FinancesPageState extends State<FinancesPage> {
   }
 
   List<_Transaction> _visibleTransactions(List<_Transaction> transactions) {
+    final query = _normalizeSearch(_query);
     return transactions
         .where((item) {
-          return _filter == 'الكل' ||
+          final matchesFilter =
+              _filter == 'الكل' ||
               (_filter == 'إيرادات' ? item.income : !item.income);
+          final matchesSearch =
+              query.isEmpty ||
+              _normalizeSearch(item.title).contains(query) ||
+              _normalizeSearch(item.category).contains(query) ||
+              _normalizeSearch(item.date).contains(query) ||
+              item.amount.toStringAsFixed(0).contains(query);
+          return matchesFilter && matchesSearch;
         })
         .toList(growable: false);
+  }
+
+  String _normalizeSearch(String value) => value.trim().toLowerCase();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -128,6 +147,25 @@ class _FinancesPageState extends State<FinancesPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) => setState(() => _query = value),
+                          decoration: InputDecoration(
+                            hintText: 'ابحث في الحركات المالية...',
+                            prefixIcon: const Icon(Iconsax.search_normal),
+                            suffixIcon: _query.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'مسح البحث',
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _query = '');
+                                    },
+                                    icon: const Icon(Iconsax.close_circle),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final periodField = DropdownButtonFormField<String>(

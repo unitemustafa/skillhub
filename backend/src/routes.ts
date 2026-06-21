@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { prisma } from './db.js';
 import { requireAuth, signToken } from './auth.js';
@@ -14,6 +15,64 @@ import {
 } from './validation.js';
 
 export const api = Router();
+
+const currentUserId = (res: Response) => res.locals.user.sub as string;
+
+const requireAdmin = (role: string) => {
+  if (role !== 'admin') {
+    throw new AppError(403, 'غير مسموح بتنفيذ هذا الإجراء');
+  }
+};
+
+const ensureOwnedPlayer = async (playerId: string, ownerId: string) => {
+  const player = await prisma.player.findFirst({
+    where: { id: playerId, ownerId },
+    select: { id: true },
+  });
+  if (!player) throw new AppError(404, 'اللاعب غير موجود');
+  return player;
+};
+
+const nextPlayerId = async (ownerId: string) => {
+  const [ids, allIds] = await Promise.all([
+    prisma.player.findMany({
+      where: { ownerId },
+      select: { id: true },
+    }),
+    prisma.player.findMany({ select: { id: true } }),
+  ]);
+  const usedIds = new Set(allIds.map((player) => player.id));
+  let nextNumber = Math.max(
+    1,
+    ...ids.map((player) => Number(player.id.replace(/\D/g, '')) + 1),
+  );
+
+  while (true) {
+    const candidate = `Y-${String(nextNumber).padStart(4, '0')}`;
+    if (!usedIds.has(candidate)) return candidate;
+    nextNumber += 1;
+  }
+};
+
+const isUniqueConflict = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  error.code === 'P2002';
+
+const createOwnedPlayer = async (
+  ownerId: string,
+  input: ReturnType<typeof playerSchema.parse>,
+) => {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await prisma.player.create({
+        data: { id: await nextPlayerId(ownerId), ownerId, ...input },
+      });
+    } catch (error) {
+      if (!isUniqueConflict(error)) throw error;
+    }
+  }
+  throw new AppError(409, 'تعذر إنشاء رقم جديد للاعب');
+};
 
 api.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'skillhub-api' });
@@ -38,15 +97,9 @@ api.post('/auth/login', async (req, res) => {
 
 api.use(requireAuth);
 
-const requireAdmin = (role: string) => {
-  if (role !== 'admin') {
-    throw new AppError(403, 'غير مسموح بتنفيذ هذا الإجراء');
-  }
-};
-
 api.get('/auth/me', async (_req, res) => {
   const user = await prisma.user.findUnique({
-    where: { id: res.locals.user.sub },
+    where: { id: currentUserId(res) },
     select: { id: true, name: true, email: true, role: true, createdAt: true },
   });
   if (!user) throw new AppError(404, 'المستخدم غير موجود');
@@ -98,11 +151,13 @@ api.post('/users', async (req, res) => {
 });
 
 api.get('/players', async (req, res) => {
+  const ownerId = currentUserId(res);
   const search = String(req.query.search ?? '').trim();
   const status = String(req.query.status ?? 'all');
   const page = Math.max(1, Number(req.query.page ?? 1));
   const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 25)));
   const where = {
+    ownerId,
     ...(search
       ? {
           OR: [
@@ -125,7 +180,13 @@ api.get('/players', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
-      include: { subscriptions: { orderBy: { endDate: 'desc' }, take: 1 } },
+      include: {
+        subscriptions: {
+          where: { ownerId },
+          orderBy: { endDate: 'desc' },
+          take: 1,
+        },
+      },
     }),
     prisma.player.count({ where }),
   ]);
@@ -137,25 +198,24 @@ api.get('/players', async (req, res) => {
 });
 
 api.post('/players', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = playerSchema.parse(req.body);
-  const ids = await prisma.player.findMany({ select: { id: true } });
-  const nextNumber = Math.max(
-    1,
-    ...ids.map((player) => Number(player.id.replace(/\D/g, '')) + 1),
-  );
-  const player = await prisma.player.create({
-    data: { id: `Y-${String(nextNumber).padStart(4, '0')}`, ...input },
-  });
+  const player = await createOwnedPlayer(ownerId, input);
   res.status(201).json(player);
 });
 
 api.get('/players/:id', async (req, res) => {
-  const player = await prisma.player.findUnique({
-    where: { id: req.params.id },
+  const ownerId = currentUserId(res);
+  const player = await prisma.player.findFirst({
+    where: { id: req.params.id, ownerId },
     include: {
-      subscriptions: { orderBy: { startDate: 'desc' } },
-      evaluations: { orderBy: { evaluationDate: 'desc' } },
-      messages: { orderBy: { createdAt: 'desc' }, take: 20 },
+      subscriptions: { where: { ownerId }, orderBy: { startDate: 'desc' } },
+      evaluations: { where: { ownerId }, orderBy: { evaluationDate: 'desc' } },
+      messages: {
+        where: { ownerId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      },
     },
   });
   if (!player) throw new AppError(404, 'اللاعب غير موجود');
@@ -163,26 +223,31 @@ api.get('/players/:id', async (req, res) => {
 });
 
 api.put('/players/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = playerSchema.parse(req.body);
+  await ensureOwnedPlayer(req.params.id, ownerId);
   res.json(
     await prisma.player.update({ where: { id: req.params.id }, data: input }),
   );
 });
 
 api.delete('/players/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  await ensureOwnedPlayer(req.params.id, ownerId);
   await prisma.player.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.get('/subscriptions', async (req, res) => {
+  const ownerId = currentUserId(res);
   const now = new Date();
   const status = String(req.query.status ?? 'all');
   const where =
     status === 'active'
-      ? { startDate: { lte: now }, endDate: { gte: now } }
+      ? { ownerId, startDate: { lte: now }, endDate: { gte: now } }
       : status === 'expired'
-        ? { endDate: { lt: now } }
-        : {};
+        ? { ownerId, endDate: { lt: now } }
+        : { ownerId };
 
   res.json(
     await prisma.subscription.findMany({
@@ -194,15 +259,20 @@ api.get('/subscriptions', async (req, res) => {
 });
 
 api.post('/subscriptions', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = subscriptionSchema.parse(req.body);
+  await ensureOwnedPlayer(input.playerId, ownerId);
   const subscription = await prisma.$transaction(async (tx) => {
-    const created = await tx.subscription.create({ data: input });
+    const created = await tx.subscription.create({
+      data: { ...input, ownerId },
+    });
     await tx.player.update({
       where: { id: input.playerId },
       data: { isActive: true },
     });
     await tx.financeTransaction.create({
       data: {
+        ownerId,
         type: 'income',
         category: 'subscription',
         amount: input.amount,
@@ -215,25 +285,40 @@ api.post('/subscriptions', async (req, res) => {
 });
 
 api.put('/subscriptions/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = subscriptionSchema.parse(req.body);
+  const existing = await prisma.subscription.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'الاشتراك غير موجود');
+  await ensureOwnedPlayer(input.playerId, ownerId);
   res.json(
     await prisma.subscription.update({
       where: { id: req.params.id },
-      data: input,
+      data: { ...input, ownerId },
     }),
   );
 });
 
 api.delete('/subscriptions/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.subscription.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'الاشتراك غير موجود');
   await prisma.subscription.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.get('/evaluations', async (req, res) => {
+  const ownerId = currentUserId(res);
   const playerId = req.query.playerId ? String(req.query.playerId) : undefined;
+  if (playerId) await ensureOwnedPlayer(playerId, ownerId);
   res.json(
     await prisma.evaluation.findMany({
-      where: playerId ? { playerId } : {},
+      where: playerId ? { ownerId, playerId } : { ownerId },
       include: { player: true },
       orderBy: { evaluationDate: 'desc' },
     }),
@@ -241,48 +326,78 @@ api.get('/evaluations', async (req, res) => {
 });
 
 api.post('/evaluations', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = evaluationSchema.parse(req.body);
-  res.status(201).json(await prisma.evaluation.create({ data: input }));
+  await ensureOwnedPlayer(input.playerId, ownerId);
+  res
+    .status(201)
+    .json(await prisma.evaluation.create({ data: { ...input, ownerId } }));
 });
 
 api.put('/evaluations/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = evaluationSchema.parse(req.body);
+  const existing = await prisma.evaluation.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'التقييم غير موجود');
+  await ensureOwnedPlayer(input.playerId, ownerId);
   res.json(
     await prisma.evaluation.update({
       where: { id: req.params.id },
-      data: input,
+      data: { ...input, ownerId },
     }),
   );
 });
 
 api.delete('/evaluations/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.evaluation.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'التقييم غير موجود');
   await prisma.evaluation.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.get('/finance/transactions', async (_req, res) => {
+  const ownerId = currentUserId(res);
   res.json(
     await prisma.financeTransaction.findMany({
+      where: { ownerId },
       orderBy: { occurredAt: 'desc' },
     }),
   );
 });
 
 api.post('/finance/transactions', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = transactionSchema.parse(req.body);
   res
     .status(201)
-    .json(await prisma.financeTransaction.create({ data: input }));
+    .json(
+      await prisma.financeTransaction.create({ data: { ...input, ownerId } }),
+    );
 });
 
 api.delete('/finance/transactions/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.financeTransaction.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'المعاملة المالية غير موجودة');
   await prisma.financeTransaction.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.get('/messages', async (_req, res) => {
+  const ownerId = currentUserId(res);
   res.json(
     await prisma.message.findMany({
+      where: { ownerId },
       include: { player: true },
       orderBy: { createdAt: 'desc' },
     }),
@@ -290,11 +405,14 @@ api.get('/messages', async (_req, res) => {
 });
 
 api.post('/messages', async (req, res) => {
+  const ownerId = currentUserId(res);
   const input = messageSchema.parse(req.body);
+  if (input.playerId) await ensureOwnedPlayer(input.playerId, ownerId);
   const scheduled = Boolean(input.scheduledAt && input.scheduledAt > new Date());
   const message = await prisma.message.create({
     data: {
       ...input,
+      ownerId,
       status: scheduled ? 'scheduled' : 'sent',
       sentAt: scheduled ? null : new Date(),
     },
@@ -303,13 +421,21 @@ api.post('/messages', async (req, res) => {
 });
 
 api.delete('/messages/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.message.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'الرسالة غير موجودة');
   await prisma.message.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.get('/notifications', async (_req, res) => {
+  const ownerId = currentUserId(res);
   res.json(
     await prisma.notification.findMany({
+      where: { ownerId },
       orderBy: { createdAt: 'desc' },
       take: 100,
     }),
@@ -317,14 +443,21 @@ api.get('/notifications', async (_req, res) => {
 });
 
 api.patch('/notifications/read-all', async (_req, res) => {
+  const ownerId = currentUserId(res);
   const result = await prisma.notification.updateMany({
-    where: { isRead: false },
+    where: { ownerId, isRead: false },
     data: { isRead: true },
   });
   res.json({ updated: result.count });
 });
 
 api.patch('/notifications/:id/read', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.notification.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'الإشعار غير موجود');
   res.json(
     await prisma.notification.update({
       where: { id: req.params.id },
@@ -334,16 +467,24 @@ api.patch('/notifications/:id/read', async (req, res) => {
 });
 
 api.delete('/notifications/:id', async (req, res) => {
+  const ownerId = currentUserId(res);
+  const existing = await prisma.notification.findFirst({
+    where: { id: req.params.id, ownerId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError(404, 'الإشعار غير موجود');
   await prisma.notification.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
 
 api.delete('/notifications', async (_req, res) => {
-  await prisma.notification.deleteMany();
+  const ownerId = currentUserId(res);
+  await prisma.notification.deleteMany({ where: { ownerId } });
   res.status(204).end();
 });
 
 api.get('/dashboard', async (_req, res) => {
+  const ownerId = currentUserId(res);
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -357,13 +498,14 @@ api.get('/dashboard', async (_req, res) => {
     finances,
     unreadNotifications,
   ] = await prisma.$transaction([
-    prisma.player.count(),
-    prisma.player.count({ where: { isActive: true } }),
+    prisma.player.count({ where: { ownerId } }),
+    prisma.player.count({ where: { ownerId, isActive: true } }),
     prisma.subscription.count({
-      where: { startDate: { lte: now }, endDate: { gte: now } },
+      where: { ownerId, startDate: { lte: now }, endDate: { gte: now } },
     }),
     prisma.subscription.count({
       where: {
+        ownerId,
         endDate: {
           gte: now,
           lte: new Date(now.getTime() + 7 * 86400000),
@@ -371,13 +513,13 @@ api.get('/dashboard', async (_req, res) => {
       },
     }),
     prisma.evaluation.count({
-      where: { evaluationDate: { gte: monthStart, lt: monthEnd } },
+      where: { ownerId, evaluationDate: { gte: monthStart, lt: monthEnd } },
     }),
     prisma.financeTransaction.findMany({
-      where: { occurredAt: { gte: monthStart, lt: monthEnd } },
+      where: { ownerId, occurredAt: { gte: monthStart, lt: monthEnd } },
       select: { type: true, amount: true },
     }),
-    prisma.notification.count({ where: { isRead: false } }),
+    prisma.notification.count({ where: { ownerId, isRead: false } }),
   ]);
 
   const income = finances

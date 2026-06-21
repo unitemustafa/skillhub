@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillhub/app/app.dart';
 import 'package:skillhub/core/localization/app_localizations.dart';
 import 'package:skillhub/core/network/api_client.dart';
@@ -24,6 +25,14 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static const _sessionKeys = [
+    'skillhub_session_expires_at',
+    'skillhub_session_remembered',
+    'skillhub_session_is_admin',
+    'skillhub_session_close_notice',
+    'skillhub_auth_token',
+  ];
+
   bool _notificationsEnabled = true;
   XFile? _profileImage;
 
@@ -60,14 +69,14 @@ class _ProfilePageState extends State<ProfilePage> {
     return const Icon(Iconsax.user, size: 40, color: AppColors.accentBlue);
   }
 
-  void _handleLogout() {
+  Future<void> _handleLogout() async {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final secondaryColor =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.72) ??
         AppColors.textSecondary;
 
-    showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -103,7 +112,7 @@ class _ProfilePageState extends State<ProfilePage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
+                onPressed: () => Navigator.of(ctx).pop(false),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -131,14 +140,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                onPressed: () async {
-                  await ApiClient().clearToken();
-                  if (!mounted) return;
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginPage()),
-                    (route) => false,
-                  );
-                },
+                onPressed: () => Navigator.of(ctx).pop(true),
                 child: Text(
                   l10n.logout,
                   style: const TextStyle(fontWeight: FontWeight.w800),
@@ -148,6 +150,22 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
       ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in _sessionKeys) {
+      await prefs.remove(key);
+    }
+    await ApiClient().clearToken();
+    if (!mounted) return;
+
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (_) => false,
     );
   }
 
@@ -169,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
         return SafeArea(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 10),
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 22),
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 22),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: const BorderRadius.vertical(
@@ -203,11 +221,47 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 22),
+                Row(
+                  textDirection: l10n.isArabic
+                      ? TextDirection.rtl
+                      : TextDirection.ltr,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Iconsax.moon,
+                        color: theme.colorScheme.primary,
+                        size: 21,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      l10n.isArabic ? 'مظهر التطبيق' : 'App theme',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  l10n.isArabic ? 'ظ…ط¸ظ‡ط± ط§ظ„طھط·ط¨ظٹظ‚' : 'App theme',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0,
+                  l10n.isArabic
+                      ? 'اختر المظهر المناسب لطريقة استخدامك.'
+                      : 'Choose the appearance that suits you.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(
+                      alpha: 0.68,
+                    ),
+                    fontWeight: FontWeight.w600,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -218,7 +272,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     subtitle: mode == ThemeMode.system
                         ? Text(
                             l10n.isArabic
-                                ? 'ظٹطھط؛ظٹط± طھظ„ظ‚ط§ط¦ظٹط§ ظ…ط¹ ط«ظٹظ… ط§ظ„ط¬ظ‡ط§ط²'
+                                ? 'يتغير تلقائيا حسب إعدادات الجهاز.'
                                 : 'Follows your device theme',
                           )
                         : null,
@@ -260,7 +314,7 @@ class _ProfilePageState extends State<ProfilePage> {
           AppBluePageHeader(
             title: l10n.profile,
             showBackButton: widget.showBackButton,
-            pinned: true,
+            pinned: false,
             floating: false,
             snap: false,
             bottomHeight: 224,
@@ -478,10 +532,10 @@ class _ThemeModeChoiceCard extends StatelessWidget {
     final l10n = context.l10n;
     final borderColor = selected
         ? theme.colorScheme.primary
-        : theme.colorScheme.outline.withValues(alpha: 0.7);
+        : theme.colorScheme.outline.withValues(alpha: 0.46);
     final backgroundColor = selected
-        ? theme.colorScheme.primary.withValues(alpha: 0.13)
-        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.72);
+        ? theme.colorScheme.primary.withValues(alpha: 0.11)
+        : theme.colorScheme.surface;
     final secondaryColor =
         theme.textTheme.bodySmall?.color?.withValues(alpha: 0.72) ??
         AppColors.textSecondary;
@@ -496,11 +550,21 @@ class _ThemeModeChoiceCard extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
             decoration: BoxDecoration(
               color: backgroundColor,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: borderColor, width: selected ? 1.4 : 1),
+              boxShadow: [
+                if (!selected)
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.16 : 0.04,
+                    ),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+              ],
             ),
             child: Row(
               textDirection: l10n.isArabic
@@ -514,7 +578,7 @@ class _ThemeModeChoiceCard extends StatelessWidget {
                     color: selected
                         ? theme.colorScheme.primary.withValues(alpha: 0.16)
                         : theme.colorScheme.onSurface.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     icon,
@@ -527,10 +591,15 @@ class _ThemeModeChoiceCard extends StatelessWidget {
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: l10n.isArabic
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
                     children: [
                       Text(
                         label,
+                        textAlign: l10n.isArabic
+                            ? TextAlign.right
+                            : TextAlign.left,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),

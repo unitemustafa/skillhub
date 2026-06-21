@@ -21,7 +21,9 @@ class EvaluationsPage extends StatefulWidget {
 
 class _EvaluationsPageState extends State<EvaluationsPage> {
   final _apiClient = ApiClient();
+  final _searchController = TextEditingController();
   String _period = 'الكل';
+  String _query = '';
   late Future<List<EvaluationRecord>> _recordsFuture;
 
   bool get _isPlayerScope => widget.player != null;
@@ -45,11 +47,30 @@ class _EvaluationsPageState extends State<EvaluationsPage> {
   }
 
   List<EvaluationRecord> _visibleRecords(List<EvaluationRecord> records) {
+    final query = _normalizeSearch(_query);
     return records
         .where((record) {
-          return _period == 'الكل' || record.date.endsWith(_period);
+          final matchesPeriod =
+              _period == 'الكل' || record.date.endsWith(_period);
+          final player = record.player;
+          final matchesSearch =
+              query.isEmpty ||
+              _normalizeSearch(player?.name ?? '').contains(query) ||
+              _normalizeSearch(player?.id ?? '').contains(query) ||
+              _normalizeSearch(record.coach).contains(query) ||
+              _normalizeSearch(record.notes).contains(query) ||
+              _normalizeSearch(record.date).contains(query);
+          return matchesPeriod && matchesSearch;
         })
         .toList(growable: false);
+  }
+
+  String _normalizeSearch(String value) => value.trim().toLowerCase();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   List<String> _periods(List<EvaluationRecord> records) {
@@ -115,6 +136,27 @@ class _EvaluationsPageState extends State<EvaluationsPage> {
                           average: average,
                           total: allRecords.length,
                           excellent: excellentCount,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) => setState(() => _query = value),
+                          decoration: InputDecoration(
+                            hintText: _isPlayerScope
+                                ? 'ابحث بالمدرب أو الملاحظات...'
+                                : 'ابحث باسم اللاعب أو المدرب...',
+                            prefixIcon: const Icon(Iconsax.search_normal),
+                            suffixIcon: _query.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'مسح البحث',
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _query = '');
+                                    },
+                                    icon: const Icon(Iconsax.close_circle),
+                                  ),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         SingleChildScrollView(

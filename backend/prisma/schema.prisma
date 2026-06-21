@@ -9,13 +9,19 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         String   @default("admin")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  passwordHash        String
+  role                String               @default("admin")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  players             Player[]
+  subscriptions       Subscription[]
+  evaluations         Evaluation[]
+  financeTransactions FinanceTransaction[]
+  messages            Message[]
+  notifications       Notification[]
 }
 
 model Player {
@@ -27,12 +33,17 @@ model Player {
   guardianRelation String
   guardianJob      String?
   isActive         Boolean        @default(false)
+  ownerId          String
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+  owner            User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   subscriptions    Subscription[]
   evaluations      Evaluation[]
   messages         Message[]
 
+  @@index([ownerId])
+  @@index([ownerId, name])
+  @@index([ownerId, phone])
   @@index([name])
   @@index([phone])
 }
@@ -40,6 +51,7 @@ model Player {
 model Subscription {
   id        String   @id @default(cuid())
   playerId  String
+  ownerId   String
   amount    Float
   startDate DateTime
   endDate   DateTime
@@ -47,7 +59,10 @@ model Subscription {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
+  @@index([ownerId, endDate])
   @@index([playerId])
   @@index([endDate])
 }
@@ -55,6 +70,7 @@ model Subscription {
 model Evaluation {
   id          String   @id @default(cuid())
   playerId    String
+  ownerId     String
   coach       String
   evaluationDate DateTime @default(now())
   fitness     Int
@@ -66,25 +82,33 @@ model Evaluation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
+  @@index([ownerId, evaluationDate])
   @@index([playerId])
   @@index([evaluationDate])
 }
 
 model FinanceTransaction {
   id          String   @id @default(cuid())
+  ownerId     String
   type        String
   category    String
   amount      Float
   description String
   occurredAt  DateTime @default(now())
   createdAt   DateTime @default(now())
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
+  @@index([ownerId, occurredAt])
   @@index([occurredAt])
 }
 
 model Message {
   id          String   @id @default(cuid())
+  ownerId     String
   playerId    String?
   recipient   String
   channel     String
@@ -94,18 +118,25 @@ model Message {
   sentAt      DateTime?
   createdAt   DateTime @default(now())
   player      Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
+  @@index([ownerId, createdAt])
   @@index([playerId])
   @@index([createdAt])
 }
 
 model Notification {
   id        String   @id @default(cuid())
+  ownerId   String
   title     String
   body      String
   type      String   @default("info")
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
+  @@index([ownerId])
+  @@index([ownerId, createdAt])
   @@index([createdAt])
 }

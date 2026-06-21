@@ -123,16 +123,7 @@ class _DashboardHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
-              const Text(
-                'أقسام سريعة',
-                style: TextStyle(
-                  color: AppColors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 36),
               Row(
                 children: [
                   Expanded(

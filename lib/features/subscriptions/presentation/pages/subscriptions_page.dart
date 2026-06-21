@@ -39,17 +39,20 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   }
 
   List<_SubscriptionItem> _visibleItems(List<_SubscriptionItem> items) {
+    final query = _normalizeSearch(_query);
     return items
         .where((item) {
           final matchesFilter = _filter == 'الكل' || item.status == _filter;
-          final query = _query.trim();
           return matchesFilter &&
               (query.isEmpty ||
-                  item.playerName.contains(query) ||
-                  item.playerId.contains(query));
+                  _normalizeSearch(item.playerName).contains(query) ||
+                  _normalizeSearch(item.playerId).contains(query) ||
+                  _normalizeSearch(item.endDateLabel).contains(query));
         })
         .toList(growable: false);
   }
+
+  String _normalizeSearch(String value) => value.trim().toLowerCase();
 
   @override
   Widget build(BuildContext context) {
@@ -93,10 +96,11 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                       ),
                       const SizedBox(height: 12),
                       Align(
-                        alignment: Alignment.centerRight,
+                        alignment: Alignment.center,
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               for (final filter in ['الكل', 'نشط', 'منتهي'])
                                 _HeaderFilterChip(
@@ -232,6 +236,32 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                     ),
                                   ),
                                   TextButton(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppColors.accentBlueDark,
+                                      disabledForegroundColor: Theme.of(
+                                        context,
+                                      ).disabledColor,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 7,
+                                      ),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      minimumSize: Size.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        side: BorderSide(
+                                          color: item.player == null
+                                              ? Theme.of(context).dividerColor
+                                                    .withValues(alpha: 0.8)
+                                              : AppColors.accentBlueDark,
+                                        ),
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                                     onPressed: item.player == null
                                         ? null
                                         : () => Navigator.push(
