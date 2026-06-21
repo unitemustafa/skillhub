@@ -13,6 +13,13 @@ export const notFound: RequestHandler = (req, res) => {
 };
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  const appStatus =
+    error instanceof AppError
+      ? error.status
+      : typeof error?.status === 'number'
+        ? error.status
+        : undefined;
+
   if (error instanceof ZodError) {
     res
       .status(422)
@@ -31,7 +38,7 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     }
   }
 
-  const status = error instanceof AppError ? error.status : 500;
+  const status = appStatus ?? 500;
   const message =
     status === 500 ? 'حدث خطأ داخلي في الخادم' : error.message;
   if (status === 500) console.error(error);

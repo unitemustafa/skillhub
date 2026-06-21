@@ -73,8 +73,14 @@ api.post('/users', async (req, res) => {
   requireAdmin(res.locals.user.role);
   const input = userSchema.parse(req.body);
   const passwordHash = await bcrypt.hash(input.password, 12);
-  const user = await prisma.user.create({
-    data: {
+  const user = await prisma.user.upsert({
+    where: { email: input.email },
+    update: {
+      name: input.name,
+      passwordHash,
+      role: input.role,
+    },
+    create: {
       name: input.name,
       email: input.email,
       passwordHash,
