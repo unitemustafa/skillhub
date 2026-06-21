@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:skillhub/core/localization/app_localizations.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -17,7 +18,7 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController(text: 'مدير النظام');
+  final _nameController = TextEditingController(text: 'مدير الأكاديمية');
   final _emailController = TextEditingController(text: 'admin@skillhub.com');
   XFile? _imageFile;
 
@@ -54,7 +55,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         SnackbarUtils.showError(
           context,
           context.l10n.isArabic
-              ? 'حدث خطأ أثناء تحديد الصورة'
+              ? 'ط­ط¯ط« ط®ط·ط£ ط£ط«ظ†ط§ط، طھط­ط¯ظٹط¯ ط§ظ„طµظˆط±ط©'
               : 'Error selecting image',
         );
       }
@@ -91,7 +92,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               const SizedBox(height: 20),
               Text(
-                isArabic ? 'صورة الملف الشخصي' : 'Profile Picture',
+                isArabic
+                    ? 'طµظˆط±ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ط´ط®طµظٹ'
+                    : 'Profile Picture',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -99,7 +102,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               const SizedBox(height: 8),
               Text(
                 isArabic
-                    ? 'اختر مصدر الصورة لتحديث ملفك الشخصي'
+                    ? 'ط§ط®طھط± ظ…طµط¯ط± ط§ظ„طµظˆط±ط© ظ„طھط­ط¯ظٹط« ظ…ظ„ظپظƒ ط§ظ„ط´ط®طµظٹ'
                     : 'Select image source to update your profile',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: secondaryColor,
@@ -111,7 +114,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 children: [
                   _buildSourceOption(
                     icon: Iconsax.camera,
-                    label: isArabic ? 'الكاميرا' : 'Camera',
+                    label: isArabic ? 'ط§ظ„ظƒط§ظ…ظٹط±ط§' : 'Camera',
                     color: AppColors.accentBlue,
                     onTap: () {
                       Navigator.pop(ctx);
@@ -120,7 +123,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                   _buildSourceOption(
                     icon: Iconsax.gallery,
-                    label: isArabic ? 'المعرض' : 'Gallery',
+                    label: isArabic ? 'ط§ظ„ظ…ط¹ط±ط¶' : 'Gallery',
                     color: AppColors.greenBright,
                     onTap: () {
                       Navigator.pop(ctx);
@@ -130,7 +133,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   if (_imageFile != null)
                     _buildSourceOption(
                       icon: Iconsax.trash,
-                      label: isArabic ? 'إزالة' : 'Remove',
+                      label: isArabic ? 'ط¥ط²ط§ظ„ط©' : 'Remove',
                       color: AppColors.red,
                       onTap: () {
                         Navigator.pop(ctx);
@@ -222,12 +225,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       appBar: AppBar(
         backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(
-            l10n.isArabic ? Iconsax.arrow_right_3 : Iconsax.arrow_left_2,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: const AppBackButton(),
         title: Text(
           l10n.editProfile,
           style: theme.textTheme.titleMedium?.copyWith(

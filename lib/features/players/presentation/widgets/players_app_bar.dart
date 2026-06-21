@@ -1,57 +1,50 @@
 import 'package:flutter/material.dart';
-import 'package:skillhub/core/theme/app_colors.dart';
-
 import 'package:iconsax/iconsax.dart';
-
-enum PlayersAgeStage {
-  all('كل المراحل'),
-  buds('براعم'),
-  cubs('أشبال'),
-  juniors('ناشئين'),
-  youth('شباب');
-
-  const PlayersAgeStage(this.label);
-
-  final String label;
-}
+import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
+import 'package:skillhub/core/widgets/app_blue_header_background.dart';
 
 class PlayersAppBar extends StatelessWidget {
   const PlayersAppBar({
     super.key,
-    required this.selectedAgeStage,
-    required this.onAgeStageChanged,
+    required this.selectedBirthYear,
+    required this.availableBirthYears,
+    required this.onBirthYearChanged,
+    this.showBackButton = true,
   });
 
-  final PlayersAgeStage selectedAgeStage;
-  final ValueChanged<PlayersAgeStage> onAgeStageChanged;
+  final int? selectedBirthYear;
+  final List<int> availableBirthYears;
+  final ValueChanged<int?> onBirthYearChanged;
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) {
     return SliverAppBar(
-      floating: true,
-      snap: true,
+      pinned: true,
+      floating: false,
+      snap: false,
       toolbarHeight: 66,
       backgroundColor: AppColors.accentBlueDark,
       surfaceTintColor: Colors.transparent,
+      flexibleSpace: const AppBlueHeaderBackground(
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+        child: SizedBox.expand(),
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
-      leading: IconButton(
-        icon: const Icon(Iconsax.arrow_right_3, color: AppColors.white),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'اللاعبين',
-            style: const TextStyle(
-              color: AppColors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
+      automaticallyImplyLeading: false,
+      leading: showBackButton
+          ? const AppBackButton(color: AppColors.white)
+          : null,
+      title: const Text(
+        'اللاعبين',
+        style: TextStyle(
+          color: AppColors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(116),
@@ -60,8 +53,8 @@ class PlayersAppBar extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                decoration: const InputDecoration(
+              const TextField(
+                decoration: InputDecoration(
                   hintText: 'دور على لاعب...',
                   fillColor: AppColors.white,
                   prefixIcon: Icon(
@@ -76,39 +69,62 @@ class PlayersAppBar extends StatelessWidget {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: PlayersAgeStage.values.map((stage) {
-                      final isSelected = stage == selectedAgeStage;
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: ChoiceChip(
-                          label: Text(stage.label),
-                          selected: isSelected,
-                          showCheckmark: false,
-                          side: BorderSide(
-                            color: isSelected
-                                ? AppColors.accentBlue
-                                : AppColors.border,
-                          ),
-                          backgroundColor: AppColors.white.withValues(
-                            alpha: 0.18,
-                          ),
-                          selectedColor: AppColors.white,
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? AppColors.accentBlueDark
-                                : AppColors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          onSelected: (_) => onAgeStageChanged(stage),
+                    children: [
+                      _BirthYearChip(
+                        label: 'كل السنين',
+                        selected: selectedBirthYear == null,
+                        onSelected: () => onBirthYearChanged(null),
+                      ),
+                      for (final year in availableBirthYears)
+                        _BirthYearChip(
+                          label: '$year',
+                          selected: selectedBirthYear == year,
+                          onSelected: () => onBirthYearChanged(year),
                         ),
-                      );
-                    }).toList(),
+                    ],
                   ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _BirthYearChip extends StatelessWidget {
+  const _BirthYearChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        showCheckmark: false,
+        side: BorderSide(
+          color: selected ? AppColors.accentBlueDark : AppColors.white,
+          width: selected ? 1.4 : 1,
+        ),
+        backgroundColor: AppColors.white,
+        selectedColor: AppColors.white,
+        shadowColor: AppColors.navy.withValues(alpha: 0.14),
+        elevation: selected ? 3 : 0,
+        labelStyle: TextStyle(
+          color: AppColors.accentBlueDark,
+          fontWeight: FontWeight.w800,
+        ),
+        onSelected: (_) => onSelected(),
       ),
     );
   }

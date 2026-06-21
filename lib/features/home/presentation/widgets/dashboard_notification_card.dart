@@ -7,7 +7,9 @@ import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/features/notifications/presentation/pages/notifications_page.dart';
 
 class DashboardNotificationCard extends StatefulWidget {
-  const DashboardNotificationCard({super.key});
+  const DashboardNotificationCard({super.key, this.onOpenNotifications});
+
+  final VoidCallback? onOpenNotifications;
 
   @override
   State<DashboardNotificationCard> createState() =>
@@ -103,11 +105,15 @@ class _DashboardNotificationCardState extends State<DashboardNotificationCard> {
                     child: AppSurfaceCard(
                       padding: const EdgeInsets.all(16),
                       onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const NotificationsPage(),
-                          ),
-                        );
+                        if (widget.onOpenNotifications != null) {
+                          widget.onOpenNotifications!();
+                        } else {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const NotificationsPage(),
+                            ),
+                          );
+                        }
                       },
                       child: Row(
                         children: [

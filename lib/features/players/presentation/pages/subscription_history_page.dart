@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/players/presentation/pages/new_subscription_page.dart';
@@ -28,13 +29,7 @@ class _SubscriptionHistoryPageState extends State<SubscriptionHistoryPage> {
         appBar: AppBar(
           backgroundColor: AppColors.white,
           elevation: 0,
-          leading: IconButton(
-            icon: Icon(
-              Iconsax.arrow_right_1,
-              color: Theme.of(context).colorScheme.onSurface,
-            ),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const AppBackButton(),
           title: Column(
             children: [
               Text(

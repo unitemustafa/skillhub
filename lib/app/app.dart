@@ -20,7 +20,7 @@ class SkillHubAppState extends State<SkillHubApp> {
   static const _themeModeKey = 'skillhub_theme_mode';
   static const _localeKey = 'skillhub_locale';
 
-  ThemeMode _themeMode = ThemeMode.light;
+  ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('ar');
 
   ThemeMode get themeMode => _themeMode;
@@ -46,20 +46,20 @@ class SkillHubAppState extends State<SkillHubApp> {
       if (savedLocale == 'ar' || savedLocale == 'en') {
         _locale = Locale(savedLocale!);
       }
-      if (savedThemeMode == 'dark') {
-        _themeMode = ThemeMode.dark;
-      } else if (savedThemeMode == 'light') {
-        _themeMode = ThemeMode.light;
-      }
+      _themeMode = _themeModeFromString(savedThemeMode);
     });
   }
 
   Future<void> toggleTheme(bool isDark) async {
+    await setThemeMode(isDark ? ThemeMode.dark : ThemeMode.light);
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
     setState(() {
-      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+      _themeMode = mode;
     });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_themeModeKey, isDark ? 'dark' : 'light');
+    await prefs.setString(_themeModeKey, _themeModeToString(mode));
   }
 
   Future<void> setLocale(Locale newLocale) async {
@@ -96,5 +96,22 @@ class SkillHubAppState extends State<SkillHubApp> {
       },
       home: const SplashPage(),
     );
+  }
+
+  ThemeMode _themeModeFromString(String? value) {
+    return switch (value) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      'system' || null => ThemeMode.system,
+      _ => ThemeMode.system,
+    };
+  }
+
+  String _themeModeToString(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
   }
 }

@@ -97,12 +97,12 @@ abstract final class AppTheme {
   }
 
   static ThemeData get darkTheme {
-    const background = Color(0xFF101626);
-    const surface = Color(0xFF171F33);
-    const surfaceHigh = Color(0xFF202A42);
-    const borderColor = Color(0xFF2D3855);
-    const textPrimary = Color(0xFFEAF0F7);
-    const textSecondary = Color(0xFFAFBAC8);
+    const background = Color(0xFF000000);
+    const surface = Color(0xFF090B10);
+    const surfaceHigh = Color(0xFF11141B);
+    const borderColor = Color(0xFF242938);
+    const textPrimary = Color(0xFFF4F7FB);
+    const textSecondary = Color(0xFFB7C0CE);
 
     final baseTheme = ThemeData.dark();
     final textTheme = GoogleFonts.cairoTextTheme(baseTheme.textTheme).apply(
@@ -124,6 +124,7 @@ abstract final class AppTheme {
         primary: AppColors.accentBlue,
         secondary: AppColors.greenBright,
         surface: surface,
+        surfaceContainerHighest: surfaceHigh,
         onSurface: textPrimary,
         outline: borderColor,
       ),
@@ -151,6 +152,7 @@ abstract final class AppTheme {
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: surface,
         modalBackgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

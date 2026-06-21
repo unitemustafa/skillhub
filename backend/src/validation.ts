@@ -8,6 +8,13 @@ export const loginSchema = z.object({
   password: z.string().min(6),
 });
 
+export const userSchema = z.object({
+  name: z.string().trim().min(2),
+  email: z.email().transform((value) => value.toLowerCase()),
+  password: z.string().min(6),
+  role: z.enum(['admin', 'user']).default('user'),
+});
+
 export const playerSchema = z.object({
   name: z.string().trim().min(2),
   birthDate: date,

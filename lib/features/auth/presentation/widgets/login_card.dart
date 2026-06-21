@@ -49,26 +49,36 @@ class LoginCard extends StatelessWidget {
                 ? Alignment.centerRight
                 : Alignment.centerLeft,
             child: Container(
-              width: 88,
-              height: 88,
-              padding: const EdgeInsets.all(12),
+              width: 104,
+              height: 104,
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: AppColors.border),
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: AppColors.accentBlue.withValues(alpha: 0.18),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.accentBlue.withValues(alpha: 0.12),
+                    color: Colors.black.withValues(alpha: 0.22),
                     blurRadius: 26,
-                    offset: const Offset(0, 14),
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: AppColors.accentBlue.withValues(alpha: 0.14),
+                    blurRadius: 30,
+                    spreadRadius: -8,
                   ),
                 ],
               ),
-              child: Image.asset(
-                'assets/icons/skillhub_logo.png',
-                fit: BoxFit.contain,
-                cacheWidth: 160,
-                cacheHeight: 160,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  'assets/icons/skillhub_logo.png',
+                  fit: BoxFit.contain,
+                  cacheWidth: 200,
+                  cacheHeight: 200,
+                ),
               ),
             ),
           ),

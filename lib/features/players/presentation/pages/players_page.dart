@@ -11,7 +11,9 @@ import 'package:skillhub/features/players/presentation/widgets/player_card.dart'
 import 'package:skillhub/features/players/presentation/widgets/players_app_bar.dart';
 
 class PlayersPage extends StatefulWidget {
-  const PlayersPage({super.key});
+  const PlayersPage({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<PlayersPage> createState() => _PlayersPageState();
@@ -20,7 +22,7 @@ class PlayersPage extends StatefulWidget {
 class _PlayersPageState extends State<PlayersPage> {
   final _apiClient = ApiClient();
   final ValueNotifier<bool> _isFabVisible = ValueNotifier<bool>(true);
-  PlayersAgeStage _selectedAgeStage = PlayersAgeStage.all;
+  int? _selectedBirthYear;
   late Future<List<PlayerSummary>> _playersFuture;
 
   @override
@@ -47,43 +49,42 @@ class _PlayersPageState extends State<PlayersPage> {
     await _playersFuture;
   }
 
-  List<PlayerSummary> _visiblePlayers(List<PlayerSummary> players) {
+  List<PlayerSummary> _visiblePlayers(
+    List<PlayerSummary> players,
+    int? selectedBirthYear,
+  ) {
+    if (selectedBirthYear == null) {
+      return players;
+    }
     return players
-        .where((player) => _matchesSelectedAgeStage(player))
+        .where((player) => _birthYearOf(player) == selectedBirthYear)
         .toList(growable: false);
   }
 
-  bool _matchesSelectedAgeStage(PlayerSummary player) {
-    if (_selectedAgeStage == PlayersAgeStage.all) {
-      return true;
-    }
-
-    final age = _extractAge(player.ageLabel);
-    if (age == null) {
-      return false;
-    }
-
-    switch (_selectedAgeStage) {
-      case PlayersAgeStage.all:
-        return true;
-      case PlayersAgeStage.buds:
-        return age <= 9;
-      case PlayersAgeStage.cubs:
-        return age >= 10 && age <= 12;
-      case PlayersAgeStage.juniors:
-        return age >= 13 && age <= 15;
-      case PlayersAgeStage.youth:
-        return age >= 16;
-    }
+  List<int> _availableBirthYears(List<PlayerSummary> players) {
+    final years = players.map(_birthYearOf).whereType<int>().toSet().toList()
+      ..sort((a, b) => b.compareTo(a));
+    return years;
   }
 
-  int? _extractAge(String ageLabel) {
-    final match = RegExp(r'\d+').firstMatch(ageLabel);
-    if (match == null) {
+  int? _effectiveSelectedBirthYear(List<int> availableBirthYears) {
+    if (_selectedBirthYear == null ||
+        !availableBirthYears.contains(_selectedBirthYear)) {
       return null;
     }
+    return _selectedBirthYear;
+  }
 
-    return int.tryParse(match.group(0)!);
+  int? _birthYearOf(PlayerSummary player) {
+    final birthDate = player.birthDate;
+    if (birthDate == null || birthDate.trim().isEmpty) {
+      return null;
+    }
+    final parts = birthDate.split('/');
+    if (parts.length == 3) {
+      return int.tryParse(parts[2]);
+    }
+    return DateTime.tryParse(birthDate)?.year;
   }
 
   @override
@@ -118,22 +119,31 @@ class _PlayersPageState extends State<PlayersPage> {
               future: _playersFuture,
               builder: (context, snapshot) {
                 final players = snapshot.data ?? const <PlayerSummary>[];
-                final visiblePlayers = _visiblePlayers(players);
+                final birthYears = _availableBirthYears(players);
+                final selectedBirthYear = _effectiveSelectedBirthYear(
+                  birthYears,
+                );
+                final visiblePlayers = _visiblePlayers(
+                  players,
+                  selectedBirthYear,
+                );
 
                 return CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
+                    parent: ClampingScrollPhysics(),
                   ),
                   cacheExtent: 700,
                   slivers: [
                     PlayersAppBar(
-                      selectedAgeStage: _selectedAgeStage,
-                      onAgeStageChanged: (stage) {
-                        if (_selectedAgeStage == stage) {
+                      selectedBirthYear: selectedBirthYear,
+                      availableBirthYears: birthYears,
+                      showBackButton: widget.showBackButton,
+                      onBirthYearChanged: (year) {
+                        if (_selectedBirthYear == year) {
                           return;
                         }
 
-                        setState(() => _selectedAgeStage = stage);
+                        setState(() => _selectedBirthYear = year);
                       },
                     ),
                     if (snapshot.connectionState == ConnectionState.waiting)

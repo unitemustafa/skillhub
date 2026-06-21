@@ -3,8 +3,20 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const adminEmail = 'admin@skillhub.com';
-const adminPassword = 'Admin123!';
+const admins = [
+  {
+    email: 'mustafa@admin.com',
+    password: '01266666610',
+    name: 'مدير التطبيق',
+  },
+  {
+    email: 'admin@skillhub.com',
+    password: 'Admin123!',
+    name: 'مدير النظام',
+  },
+] as const;
+const adminEmail = admins[0].email;
+const adminPassword = admins[0].password;
 
 const players = [
   {
@@ -66,6 +78,25 @@ async function main() {
       role: 'admin',
     },
   });
+
+  for (const admin of admins.slice(1)) {
+    const passwordHash = await bcrypt.hash(admin.password, 12);
+
+    await prisma.user.upsert({
+      where: { email: admin.email },
+      update: {
+        name: admin.name,
+        passwordHash,
+        role: 'admin',
+      },
+      create: {
+        name: admin.name,
+        email: admin.email,
+        passwordHash,
+        role: 'admin',
+      },
+    });
+  }
 
   for (const player of players) {
     await prisma.player.upsert({

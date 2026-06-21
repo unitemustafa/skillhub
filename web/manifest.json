@@ -1,6 +1,6 @@
 {
-    "name": "skillhub",
-    "short_name": "skillhub",
+    "name": "SkillHub",
+    "short_name": "SkillHub",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#1E2F4D",

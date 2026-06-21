@@ -11,8 +11,8 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage> {
-  static const _displayDuration = Duration(milliseconds: 900);
-  static const _transitionDuration = Duration(milliseconds: 260);
+  static const _displayDuration = Duration(milliseconds: 1100);
+  static const _transitionDuration = Duration(milliseconds: 280);
 
   @override
   void initState() {
@@ -39,43 +39,57 @@ class _SplashPageState extends State<SplashPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final logoSize = MediaQuery.sizeOf(context).shortestSide < 420
+        ? 132.0
+        : 154.0;
 
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: isDark
                 ? const [
-                    Color(0xFF0B1220),
-                    Color(0xFF111A29),
-                    Color(0xFF182437),
+                    Color(0xFF05070D),
+                    Color(0xFF0B1020),
+                    Color(0xFF151B2E),
                   ]
                 : const [
-                    Color(0xFFF3F6FB),
-                    Color(0xFFE8EEF6),
-                    Color(0xFFDCE6F2),
+                    Color(0xFFFFFFFF),
+                    Color(0xFFF6F8FF),
+                    Color(0xFFEAF0FF),
                   ],
           ),
         ),
         child: Stack(
           children: [
-            Positioned(
-              top: -80,
-              right: -40,
-              child: _SplashOrb(
-                size: 220,
-                color: AppColors.orange.withValues(alpha: 0.16),
-              ).animate().fadeIn(duration: 280.ms),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _SplashPatternPainter(
+                  color: (isDark ? Colors.white : AppColors.navy).withValues(
+                    alpha: isDark ? 0.035 : 0.04,
+                  ),
+                ),
+              ),
             ),
             Positioned(
-              bottom: -70,
-              left: -30,
-              child: _SplashOrb(
-                size: 180,
-                color: AppColors.accentBlue.withValues(alpha: 0.14),
-              ).animate().fadeIn(duration: 280.ms),
+              top: 54,
+              right: -56,
+              child: _SplashHalo(
+                width: 220,
+                height: 120,
+                color: AppColors.accentBlue.withValues(alpha: 0.13),
+              ).animate().fadeIn(duration: 360.ms).slideX(begin: 0.12, end: 0),
+            ),
+            Positioned(
+              bottom: 70,
+              left: -46,
+              child: _SplashHalo(
+                width: 170,
+                height: 96,
+                color: AppColors.greenBright.withValues(alpha: 0.12),
+              ).animate().fadeIn(duration: 360.ms).slideX(begin: -0.12, end: 0),
             ),
             SafeArea(
               child: Center(
@@ -85,41 +99,46 @@ class _SplashPageState extends State<SplashPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                            width: 154,
-                            height: 154,
-                            padding: const EdgeInsets.all(20),
+                            width: logoSize,
+                            height: logoSize,
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surface.withValues(
-                                alpha: isDark ? 0.9 : 0.94,
-                              ),
-                              borderRadius: BorderRadius.circular(42),
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(34),
                               border: Border.all(
-                                color: Colors.white.withValues(
-                                  alpha: isDark ? 0.08 : 0.45,
+                                color: AppColors.accentBlue.withValues(
+                                  alpha: isDark ? 0.18 : 0.16,
                                 ),
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.navy.withValues(
-                                    alpha: isDark ? 0.24 : 0.14,
+                                  color: Colors.black.withValues(
+                                    alpha: isDark ? 0.32 : 0.16,
                                   ),
-                                  blurRadius: 36,
-                                  offset: const Offset(0, 24),
+                                  blurRadius: 34,
+                                  offset: const Offset(0, 22),
+                                ),
+                                BoxShadow(
+                                  color: AppColors.accentBlue.withValues(
+                                    alpha: isDark ? 0.2 : 0.14,
+                                  ),
+                                  blurRadius: 42,
+                                  spreadRadius: -10,
                                 ),
                               ],
                             ),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(26),
+                              borderRadius: BorderRadius.circular(24),
                               child: Image.asset(
                                 'assets/icons/skillhub_logo.png',
-                                fit: BoxFit.cover,
+                                fit: BoxFit.contain,
                                 cacheWidth: 256,
                                 cacheHeight: 256,
                               ),
                             ),
                           )
                           .animate()
-                          .fadeIn(duration: 500.ms)
+                          .fadeIn(duration: 520.ms)
                           .scale(
                             begin: const Offset(0.78, 0.78),
                             curve: Curves.easeOutBack,
@@ -129,7 +148,7 @@ class _SplashPageState extends State<SplashPage> {
                             'SkillHub',
                             style: theme.textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 0.3,
+                              letterSpacing: 0,
                               color: theme.colorScheme.onSurface,
                             ),
                           )
@@ -138,7 +157,7 @@ class _SplashPageState extends State<SplashPage> {
                           .slideY(begin: 0.24, end: 0),
                       const SizedBox(height: 12),
                       Text(
-                            'نظام إدارة ذكي للأكاديميات واللاعبين',
+                            'منصة إدارة ذكية للأكاديميات واللاعبين',
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyLarge?.copyWith(
                               color: theme.textTheme.bodyLarge?.color
@@ -167,7 +186,7 @@ class _SplashPageState extends State<SplashPage> {
                                   alpha: isDark ? 0.28 : 0.08,
                                 ),
                                 valueColor: const AlwaysStoppedAnimation<Color>(
-                                  AppColors.orange,
+                                  AppColors.accentBlue,
                                 ),
                               ),
                             );
@@ -186,26 +205,57 @@ class _SplashPageState extends State<SplashPage> {
   }
 }
 
-class _SplashOrb extends StatelessWidget {
-  const _SplashOrb({required this.size, required this.color});
+class _SplashHalo extends StatelessWidget {
+  const _SplashHalo({
+    required this.width,
+    required this.height,
+    required this.color,
+  });
 
-  final double size;
+  final double width;
+  final double height;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Container(
-        width: size,
-        height: size,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: color,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: color, blurRadius: 80, spreadRadius: 12),
-          ],
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [BoxShadow(color: color, blurRadius: 64, spreadRadius: 6)],
         ),
       ),
     );
+  }
+}
+
+class _SplashPatternPainter extends CustomPainter {
+  const _SplashPatternPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+
+    const spacing = 36.0;
+    for (var x = -spacing; x < size.width + spacing; x += spacing) {
+      canvas.drawLine(
+        Offset(x, 0),
+        Offset(x + size.height, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SplashPatternPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }

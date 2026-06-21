@@ -3,6 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
@@ -113,10 +114,7 @@ class _MessagesPageState extends State<MessagesPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Iconsax.arrow_right_3),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const AppBackButton(),
           title: const Text('الرسائل والتذكيرات'),
         ),
         body: SingleChildScrollView(

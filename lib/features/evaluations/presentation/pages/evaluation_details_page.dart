@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/evaluations/domain/models/evaluation_record.dart';
@@ -22,10 +23,7 @@ class EvaluationDetailsPage extends StatelessWidget {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Iconsax.arrow_right_3),
-            onPressed: () => Navigator.pop(context),
-          ),
+          leading: const AppBackButton(),
           title: const Text('تفاصيل التقييم'),
           actions: [
             IconButton(

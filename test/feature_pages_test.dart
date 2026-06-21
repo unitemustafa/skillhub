@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:skillhub/features/communications/presentation/pages/messages_page.dart';
 import 'package:skillhub/features/evaluations/presentation/pages/evaluations_page.dart';
 import 'package:skillhub/features/finances/presentation/pages/finances_page.dart';
+import 'package:skillhub/features/home/presentation/widgets/dashboard_app_bar.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/players/presentation/pages/player_form_page.dart';
 import 'package:skillhub/features/subscriptions/presentation/pages/subscriptions_page.dart';
@@ -84,5 +85,22 @@ void main() {
         reason: '${page.runtimeType} overflowed on a phone viewport',
       );
     }
+  });
+
+  testWidgets('dashboard header quick actions fit on a phone viewport', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: CustomScrollView(slivers: [DashboardAppBar()])),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
   });
 }

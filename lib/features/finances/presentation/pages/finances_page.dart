@@ -3,6 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 
@@ -48,23 +49,6 @@ class _FinancesPageState extends State<FinancesPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Iconsax.arrow_right_3),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: const Text('الإيرادات والمصروفات'),
-          actions: [
-            IconButton(
-              icon: const Icon(Iconsax.export_1),
-              tooltip: 'تصدير',
-              onPressed: () => SnackbarUtils.showSuccess(
-                context,
-                'سيتم تجهيز التصدير بعد ربط التقارير النهائية',
-              ),
-            ),
-          ],
-        ),
         body: FutureBuilder<List<_Transaction>>(
           future: _transactionsFuture,
           builder: (context, snapshot) {
@@ -79,6 +63,10 @@ class _FinancesPageState extends State<FinancesPage> {
 
             return CustomScrollView(
               slivers: [
+                const AppBluePageHeader(
+                  title: 'الإيرادات والمصروفات',
+                  showBackButton: true,
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16),

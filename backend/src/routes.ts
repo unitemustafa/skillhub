@@ -10,6 +10,7 @@ import {
   playerSchema,
   subscriptionSchema,
   transactionSchema,
+  userSchema,
 } from './validation.js';
 
 export const api = Router();
@@ -37,6 +38,12 @@ api.post('/auth/login', async (req, res) => {
 
 api.use(requireAuth);
 
+const requireAdmin = (role: string) => {
+  if (role !== 'admin') {
+    throw new AppError(403, 'غير مسموح بتنفيذ هذا الإجراء');
+  }
+};
+
 api.get('/auth/me', async (_req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: res.locals.user.sub },
@@ -44,6 +51,44 @@ api.get('/auth/me', async (_req, res) => {
   });
   if (!user) throw new AppError(404, 'المستخدم غير موجود');
   res.json(user);
+});
+
+api.get('/users', async (_req, res) => {
+  requireAdmin(res.locals.user.role);
+  res.json(
+    await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+  );
+});
+
+api.post('/users', async (req, res) => {
+  requireAdmin(res.locals.user.role);
+  const input = userSchema.parse(req.body);
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const user = await prisma.user.create({
+    data: {
+      name: input.name,
+      email: input.email,
+      passwordHash,
+      role: input.role,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+  res.status(201).json(user);
 });
 
 api.get('/players', async (req, res) => {

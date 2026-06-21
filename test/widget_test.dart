@@ -5,7 +5,7 @@ void main() {
   testWidgets('splash screen transitions to the login page', (tester) async {
     await tester.pumpWidget(const SkillHubApp());
 
-    expect(find.text('نظام إدارة ذكي للأكاديميات واللاعبين'), findsOneWidget);
+    expect(find.text('منصة إدارة ذكية للأكاديميات واللاعبين'), findsOneWidget);
     expect(find.text('تسجيل الدخول'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 2800));

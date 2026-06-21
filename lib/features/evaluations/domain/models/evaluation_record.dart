@@ -1,3 +1,5 @@
+import 'package:skillhub/features/players/domain/models/player_summary.dart';
+
 class EvaluationRecord {
   const EvaluationRecord({
     required this.id,
@@ -5,6 +7,7 @@ class EvaluationRecord {
     required this.coach,
     required this.scores,
     required this.notes,
+    this.player,
   });
 
   final String id;
@@ -12,8 +15,11 @@ class EvaluationRecord {
   final String coach;
   final Map<String, int> scores;
   final String notes;
+  final PlayerSummary? player;
 
-  double get average => scores.values.reduce((a, b) => a + b) / scores.length;
+  double get average => scores.isEmpty
+      ? 0
+      : scores.values.reduce((a, b) => a + b) / scores.length;
 
   factory EvaluationRecord.fromJson(Map<String, dynamic> json) {
     final date = DateTime.tryParse(json['evaluationDate']?.toString() ?? '');
@@ -33,6 +39,9 @@ class EvaluationRecord {
         'العمل الجماعي': _score(json['teamwork']),
       },
       notes: json['notes']?.toString() ?? '',
+      player: json['player'] is Map<String, dynamic>
+          ? PlayerSummary.fromJson(json['player'] as Map<String, dynamic>)
+          : null,
     );
   }
 

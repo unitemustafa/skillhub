@@ -34,7 +34,7 @@ class AppLocalizations {
       isArabic ? 'شكل هادي ومريح للعين' : 'A calm, comfortable appearance';
   String get appNotifications =>
       isArabic ? 'تنبيهات التطبيق' : 'App notifications';
-  String get logout => isArabic ? 'خروج' : 'Log out';
+  String get logout => isArabic ? 'تسجيل خروج' : 'Log out';
   String get logoutTitle => isArabic ? 'تأكيد الخروج' : 'Log out';
   String get logoutMessage => isArabic
       ? 'متأكد إنك عايز تخرج من التطبيق؟'

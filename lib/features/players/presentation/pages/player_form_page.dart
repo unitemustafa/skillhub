@@ -3,6 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 
@@ -122,10 +123,7 @@ class _PlayerFormPageState extends State<PlayerFormPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Iconsax.arrow_right_3),
-            onPressed: _isSaving ? null : () => Navigator.pop(context),
-          ),
+          leading: AppBackButton(enabled: !_isSaving),
           title: Text(_isEditing ? 'تعديل بيانات اللاعب' : 'إضافة لاعب جديد'),
         ),
         body: Form(

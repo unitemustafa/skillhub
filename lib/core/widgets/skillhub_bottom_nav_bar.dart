@@ -16,7 +16,6 @@ class SkillHubBottomNavBar extends StatelessWidget {
     _SkillHubNavDestination('الرئيسية', Iconsax.home_2),
     _SkillHubNavDestination('اللاعبين', Iconsax.profile_2user),
     _SkillHubNavDestination('الاشتراكات', Iconsax.card),
-    _SkillHubNavDestination('التنبيهات', Iconsax.notification),
     _SkillHubNavDestination('حسابي', Iconsax.user),
   ];
 
@@ -27,7 +26,7 @@ class SkillHubBottomNavBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        height: 76,
+        height: 82,
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
@@ -79,6 +78,10 @@ class _SkillHubNavItem extends StatelessWidget {
     final inactiveColor = Theme.of(
       context,
     ).colorScheme.onSurface.withValues(alpha: 0.55);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedColor = isDark
+        ? AppColors.accentBlueLight
+        : AppColors.accentBlueDark;
 
     return Tooltip(
       message: destination.label,
@@ -91,7 +94,9 @@ class _SkillHubNavItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
           decoration: BoxDecoration(
             color: selected
-                ? AppColors.accentBlueSoft.withValues(alpha: 0.82)
+                ? (isDark
+                      ? AppColors.accentBlue.withValues(alpha: 0.16)
+                      : AppColors.accentBlueSoft.withValues(alpha: 0.82))
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -99,10 +104,15 @@ class _SkillHubNavItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                destination.icon,
-                size: 22,
-                color: selected ? AppColors.accentBlueDark : inactiveColor,
+              AnimatedScale(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                scale: selected ? 1.08 : 1,
+                child: Icon(
+                  destination.icon,
+                  size: 22,
+                  color: selected ? selectedColor : inactiveColor,
+                ),
               ),
               const SizedBox(height: 4),
               FittedBox(
@@ -113,7 +123,7 @@ class _SkillHubNavItem extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-                    color: selected ? AppColors.accentBlueDark : inactiveColor,
+                    color: selected ? selectedColor : inactiveColor,
                   ),
                 ),
               ),

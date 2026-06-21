@@ -3,6 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 
 class NotificationItem {
@@ -39,7 +40,9 @@ class NotificationItem {
 }
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  const NotificationsPage({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -47,6 +50,7 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   final _apiClient = ApiClient();
+  final Set<String> _dismissedNotificationIds = <String>{};
   late Future<List<NotificationItem>> _notificationsFuture;
 
   @override
@@ -81,6 +85,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
   }
 
+  Future<void> _deleteNotification(NotificationItem item) async {
+    await _apiClient.delete('/notifications/${item.id}');
+    setState(() {
+      _dismissedNotificationIds.add(item.id);
+      _notificationsFuture = _loadNotifications();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -90,7 +102,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
         body: FutureBuilder<List<NotificationItem>>(
           future: _notificationsFuture,
           builder: (context, snapshot) {
-            final notifications = snapshot.data ?? const <NotificationItem>[];
+            final notifications = (snapshot.data ?? const <NotificationItem>[])
+                .where((item) => !_dismissedNotificationIds.contains(item.id))
+                .toList(growable: false);
 
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -99,10 +113,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                   floating: true,
                   elevation: 0,
-                  leading: IconButton(
-                    icon: Icon(Iconsax.arrow_right_3, color: AppColors.navy),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                  automaticallyImplyLeading: false,
+                  leading: widget.showBackButton ? const AppBackButton() : null,
                   title: Text(
                     'الإشعارات',
                     style: TextStyle(
@@ -215,12 +227,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
                           const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final notification = notifications[index];
-                        return AppSurfaceCard(
-                          onTap: () async {
+                        return Dismissible(
+                          key: ValueKey(notification.id),
+                          direction: DismissDirection.horizontal,
+                          background: const _NotificationDismissBackground(
+                            alignment: Alignment.centerLeft,
+                          ),
+                          secondaryBackground:
+                              const _NotificationDismissBackground(
+                                alignment: Alignment.centerRight,
+                              ),
+                          confirmDismiss: (_) async {
                             try {
-                              await _markAsRead(notification);
+                              await _deleteNotification(notification);
+                              return true;
                             } on ApiException catch (error) {
-                              if (!context.mounted) return;
+                              if (!context.mounted) return false;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
@@ -233,93 +255,118 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                   ).colorScheme.error,
                                 ),
                               );
+                              return false;
                             }
                           },
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: notification.isRead
-                                      ? AppColors.mutedText.withValues(
-                                          alpha: 0.1,
-                                        )
-                                      : AppColors.accentBlueDark.withValues(
-                                          alpha: 0.1,
-                                        ),
-                                  borderRadius: BorderRadius.circular(10),
+                          child: AppSurfaceCard(
+                            onTap: () async {
+                              try {
+                                await _markAsRead(notification);
+                              } on ApiException catch (error) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      error.message,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    behavior: SnackBarBehavior.floating,
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.error,
+                                  ),
+                                );
+                              }
+                            },
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: notification.isRead
+                                        ? AppColors.mutedText.withValues(
+                                            alpha: 0.1,
+                                          )
+                                        : AppColors.accentBlueDark.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    Iconsax.notification_bing,
+                                    color: notification.isRead
+                                        ? Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.color
+                                              ?.withValues(alpha: 0.7)
+                                        : AppColors.accentBlueDark,
+                                  ),
                                 ),
-                                child: Icon(
-                                  Iconsax.notification_bing,
-                                  color: notification.isRead
-                                      ? Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.color
-                                            ?.withValues(alpha: 0.7)
-                                      : AppColors.accentBlueDark,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            notification.title,
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: notification.isRead
-                                                  ? FontWeight.w500
-                                                  : FontWeight.bold,
-                                              color: notification.isRead
-                                                  ? Theme.of(context)
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.color
-                                                        ?.withValues(alpha: 0.7)
-                                                  : Theme.of(
-                                                      context,
-                                                    ).colorScheme.onSurface,
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              notification.title,
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: notification.isRead
+                                                    ? FontWeight.w500
+                                                    : FontWeight.bold,
+                                                color: notification.isRead
+                                                    ? Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.color
+                                                          ?.withValues(
+                                                            alpha: 0.7,
+                                                          )
+                                                    : Theme.of(
+                                                        context,
+                                                      ).colorScheme.onSurface,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                        if (!notification.isRead) ...[
-                                          const SizedBox(width: 8),
-                                          const CircleAvatar(
-                                            radius: 4,
-                                            backgroundColor:
-                                                AppColors.accentBlueDark,
-                                          ),
+                                          if (!notification.isRead) ...[
+                                            const SizedBox(width: 8),
+                                            const CircleAvatar(
+                                              radius: 4,
+                                              backgroundColor:
+                                                  AppColors.accentBlueDark,
+                                            ),
+                                          ],
                                         ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      notification.subtitle,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: notification.isRead
-                                            ? AppColors.mutedText
-                                            : Colors.grey.shade700,
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      notification.time,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.mutedText,
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        notification.subtitle,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: notification.isRead
+                                              ? AppColors.mutedText
+                                              : Colors.grey.shade700,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        notification.time,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.mutedText,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -330,6 +377,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _NotificationDismissBackground extends StatelessWidget {
+  const _NotificationDismissBackground({required this.alignment});
+
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      decoration: BoxDecoration(
+        color: AppColors.red.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      alignment: alignment,
+      child: const Icon(Iconsax.trash, color: AppColors.red, size: 24),
     );
   }
 }

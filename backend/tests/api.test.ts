@@ -7,8 +7,8 @@ let token = '';
 describe('SkillHub API', () => {
   beforeAll(async () => {
     const response = await request(app).post('/api/v1/auth/login').send({
-      email: 'admin@skillhub.com',
-      password: 'Admin123!',
+      email: 'mustafa@admin.com',
+      password: '01266666610',
     });
     token = response.body.token;
   });
@@ -35,5 +35,11 @@ describe('SkillHub API', () => {
     const response = await request(app).get('/api/v1/dashboard').set('Authorization', `Bearer ${token}`);
     expect(response.status).toBe(200);
     expect(response.body.players).toBeGreaterThan(0);
+  });
+
+  it('lists application users for admins', async () => {
+    const response = await request(app).get('/api/v1/users').set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(200);
+    expect(response.body.some((user: { email: string }) => user.email === 'mustafa@admin.com')).toBe(true);
   });
 });

@@ -3,12 +3,15 @@ import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/players/presentation/pages/new_subscription_page.dart';
 
 class SubscriptionsPage extends StatefulWidget {
-  const SubscriptionsPage({super.key});
+  const SubscriptionsPage({super.key, this.showBackButton = true});
+
+  final bool showBackButton;
 
   @override
   State<SubscriptionsPage> createState() => _SubscriptionsPageState();
@@ -53,13 +56,6 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Iconsax.arrow_right_3),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: const Text('إدارة الاشتراكات'),
-        ),
         body: FutureBuilder<List<_SubscriptionItem>>(
           future: _subscriptionsFuture,
           builder: (context, snapshot) {
@@ -77,6 +73,45 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
 
             return CustomScrollView(
               slivers: [
+                AppBluePageHeader(
+                  title: 'إدارة الاشتراكات',
+                  showBackButton: widget.showBackButton,
+                  bottomHeight: 116,
+                  bottom: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: const InputDecoration(
+                          hintText: 'ابحث باسم اللاعب أو الكود...',
+                          fillColor: AppColors.white,
+                          prefixIcon: Icon(
+                            Iconsax.search_normal,
+                            color: AppColors.mutedText,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              for (final filter in ['الكل', 'نشط', 'منتهي'])
+                                _HeaderFilterChip(
+                                  label: filter,
+                                  selected: _filter == filter,
+                                  onSelected: () =>
+                                      setState(() => _filter = filter),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -109,30 +144,6 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                 ? Row(children: _withSpacing(cards, 8))
                                 : Row(children: _withSpacing(cards, 12));
                           },
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          onChanged: (value) => setState(() => _query = value),
-                          decoration: const InputDecoration(
-                            hintText: 'ابحث باسم اللاعب أو الكود...',
-                            prefixIcon: Icon(Iconsax.search_normal),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Wrap(
-                            spacing: 8,
-                            children: ['الكل', 'نشط', 'منتهي'].map((filter) {
-                              return ChoiceChip(
-                                label: Text(filter),
-                                selected: _filter == filter,
-                                showCheckmark: false,
-                                onSelected: (_) =>
-                                    setState(() => _filter = filter),
-                              );
-                            }).toList(),
-                          ),
                         ),
                       ],
                     ),
@@ -257,6 +268,43 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
         if (index != widgets.length - 1) SizedBox(width: spacing),
       ],
     ];
+  }
+}
+
+class _HeaderFilterChip extends StatelessWidget {
+  const _HeaderFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        showCheckmark: false,
+        side: BorderSide(
+          color: selected ? AppColors.accentBlueDark : AppColors.white,
+          width: selected ? 1.4 : 1,
+        ),
+        backgroundColor: AppColors.white,
+        selectedColor: AppColors.white,
+        shadowColor: AppColors.navy.withValues(alpha: 0.14),
+        elevation: selected ? 3 : 0,
+        labelStyle: const TextStyle(
+          color: AppColors.accentBlueDark,
+          fontWeight: FontWeight.w800,
+        ),
+        onSelected: (_) => onSelected(),
+      ),
+    );
   }
 }
 

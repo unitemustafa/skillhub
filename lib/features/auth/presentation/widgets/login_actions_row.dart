@@ -59,9 +59,13 @@ class LoginActionsRow extends StatelessWidget {
         TextButton(
           style: TextButton.styleFrom(
             foregroundColor: AppColors.accentBlueDark,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             minimumSize: Size.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: AppColors.accentBlueDark),
+            ),
             textStyle: const TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w800,

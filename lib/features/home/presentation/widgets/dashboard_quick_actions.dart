@@ -8,9 +8,14 @@ import 'package:skillhub/features/subscriptions/presentation/pages/subscriptions
 import 'package:skillhub/features/finances/presentation/pages/finances_page.dart';
 
 class DashboardQuickActions extends StatelessWidget {
-  const DashboardQuickActions({super.key, required this.onPlayersTap});
+  const DashboardQuickActions({
+    super.key,
+    required this.onPlayersTap,
+    this.onSubscriptionsTap,
+  });
 
   final VoidCallback onPlayersTap;
+  final VoidCallback? onSubscriptionsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -25,10 +30,12 @@ class DashboardQuickActions extends StatelessWidget {
         title: 'الاشتراكات',
         icon: Iconsax.card,
         color: AppColors.textSecondary,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
-        ),
+        onTap:
+            onSubscriptionsTap ??
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SubscriptionsPage()),
+            ),
       ),
       _QuickActionItem(
         title: 'الفلوس',
