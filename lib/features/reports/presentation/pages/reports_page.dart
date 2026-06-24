@@ -4,7 +4,12 @@ import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/features/evaluations/data/evaluations_repository.dart';
+import 'package:skillhub/features/players/data/players_repository.dart';
+import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/reports/data/report_exporter.dart';
+import 'package:skillhub/features/subscriptions/data/subscriptions_repository.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -19,6 +24,10 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _isExporting = false;
 
   static const _reportExporter = ReportExporter();
+  final _sessionService = SessionService();
+  final _playersRepository = PlayersRepository();
+  final _subscriptionsRepository = SubscriptionsRepository();
+  final _evaluationsRepository = EvaluationsRepository();
 
   static const List<String> _timePeriods = [
     'هذا الشهر',
@@ -30,6 +39,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
   static const List<_ReportItem> _reports = [
     _ReportItem(
+      key: _ReportKey.players,
       title: 'تقرير اللاعبين',
       subtitle:
           'قائمة اللاعبين المسجلين مع حالة اشتراكاتهم ومعلومات أولياء الأمور',
@@ -38,6 +48,7 @@ class _ReportsPageState extends State<ReportsPage> {
       color: AppColors.navy,
     ),
     _ReportItem(
+      key: _ReportKey.subscriptions,
       title: 'تقرير الاشتراكات',
       subtitle: 'سجل الاشتراكات والتجديدات مع تفاصيل المبالغ والتواريخ',
       metric: 'حركة الاشتراكات',
@@ -45,6 +56,7 @@ class _ReportsPageState extends State<ReportsPage> {
       color: AppColors.orange,
     ),
     _ReportItem(
+      key: _ReportKey.revenue,
       title: 'تقرير الإيرادات',
       subtitle: 'ملخص الإيرادات الكلية والشهرية وإحصائيات الاشتراكات',
       metric: 'ملخص مالي',
@@ -52,6 +64,7 @@ class _ReportsPageState extends State<ReportsPage> {
       color: AppColors.green,
     ),
     _ReportItem(
+      key: _ReportKey.evaluations,
       title: 'تقرير التقييمات',
       subtitle: 'سجل تقييمات اللاعبين بجميع المعايير والتقديرات',
       metric: 'أداء اللاعبين',
@@ -94,11 +107,11 @@ class _ReportsPageState extends State<ReportsPage> {
                         report: report,
                         isExporting: _isExporting,
                         onPdfPressed: () => _shareReport(
-                          report.title,
+                          report,
                           format: _ReportExportFormat.pdf,
                         ),
                         onExcelPressed: () => _shareReport(
-                          report.title,
+                          report,
                           format: _ReportExportFormat.excel,
                         ),
                       ),
@@ -115,7 +128,7 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   Future<void> _shareReport(
-    String title, {
+    _ReportItem report, {
     required _ReportExportFormat format,
   }) async {
     if (_isExporting) {
@@ -123,13 +136,9 @@ class _ReportsPageState extends State<ReportsPage> {
     }
 
     setState(() => _isExporting = true);
-    final data = ReportExportData(
-      title: title,
-      timePeriod: _selectedTimePeriod,
-      status: _selectedStatus,
-    );
 
     try {
+      final data = await _buildReportData(report);
       switch (format) {
         case _ReportExportFormat.pdf:
           await _reportExporter.sharePdf(data);
@@ -145,9 +154,190 @@ class _ReportsPageState extends State<ReportsPage> {
       }
     }
   }
+
+  Future<ReportExportData> _buildReportData(_ReportItem report) async {
+    final session = await _sessionService.readLastSession();
+    if (session == null) {
+      throw Exception('يلزم تسجيل الدخول قبل استخراج التقارير.');
+    }
+
+    final players = await _playersRepository.listPlayers(session);
+    final subscriptions = await _subscriptionsRepository.listSubscriptions(
+      session,
+    );
+    final evaluations = await _evaluationsRepository.listEvaluations(session);
+
+    switch (report.key) {
+      case _ReportKey.players:
+        final filtered = players.where(_matchesStatus).toList();
+        return ReportExportData(
+          title: report.title,
+          timePeriod: _selectedTimePeriod,
+          status: _selectedStatus,
+          tableHeaders: const [
+            'اسم اللاعب',
+            'تاريخ الميلاد',
+            'ولي الأمر',
+            'الهاتف',
+            'الحالة',
+          ],
+          tableRows: filtered
+              .map(
+                (player) => [
+                  player.name,
+                  player.birthDate ?? '',
+                  player.guardianName ?? '',
+                  player.phone,
+                  player.isActive ? 'نشط' : 'منتهي',
+                ],
+              )
+              .toList(),
+        );
+      case _ReportKey.subscriptions:
+        final rows = subscriptions.where((row) {
+          final endDate = DateTime.tryParse(row['endDate']?.toString() ?? '');
+          return _matchesStatusDate(endDate) && _matchesPeriod(endDate);
+        }).toList();
+        return ReportExportData(
+          title: report.title,
+          timePeriod: _selectedTimePeriod,
+          status: _selectedStatus,
+          tableHeaders: const [
+            'اللاعب',
+            'المبلغ',
+            'البداية',
+            'النهاية',
+            'الحالة',
+          ],
+          tableRows: rows.map((row) {
+            final player = row['player'];
+            final playerName = player is Map<String, dynamic>
+                ? player['name']?.toString() ?? ''
+                : '';
+            final endDate = DateTime.tryParse(row['endDate']?.toString() ?? '');
+            return [
+              playerName,
+              '${row['amount'] ?? ''}',
+              _formatDateText(row['startDate']),
+              _formatDateText(row['endDate']),
+              _isActiveDate(endDate) ? 'نشط' : 'منتهي',
+            ];
+          }).toList(),
+        );
+      case _ReportKey.revenue:
+        final rows = subscriptions.where((row) {
+          final startDate = DateTime.tryParse(
+            row['startDate']?.toString() ?? '',
+          );
+          return _matchesStatusDate(
+                DateTime.tryParse(row['endDate']?.toString() ?? ''),
+              ) &&
+              _matchesPeriod(startDate);
+        }).toList();
+        final total = rows.fold<double>(
+          0,
+          (sum, row) => sum + ((row['amount'] as num?)?.toDouble() ?? 0),
+        );
+        return ReportExportData(
+          title: report.title,
+          timePeriod: _selectedTimePeriod,
+          status: _selectedStatus,
+          tableHeaders: const ['البند', 'القيمة'],
+          tableRows: [
+            ['عدد الاشتراكات', '${rows.length}'],
+            ['إجمالي الإيرادات', total.toStringAsFixed(2)],
+          ],
+        );
+      case _ReportKey.evaluations:
+        final rows = evaluations.where((row) {
+          final date = _parseDisplayDate(row.date);
+          return _matchesPeriod(date);
+        }).toList();
+        return ReportExportData(
+          title: report.title,
+          timePeriod: _selectedTimePeriod,
+          status: _selectedStatus,
+          tableHeaders: const [
+            'اللاعب',
+            'المدرب',
+            'التاريخ',
+            'اللياقة',
+            'السرعة',
+            'المهارة',
+            'الالتزام',
+            'الجماعي',
+          ],
+          tableRows: rows.map((row) {
+            final scores = row.scores.values.toList(growable: false);
+            String scoreAt(int index) =>
+                index < scores.length ? '${scores[index]}' : '';
+            return [
+              row.player?.name ?? '',
+              row.coach,
+              row.date,
+              scoreAt(0),
+              scoreAt(1),
+              scoreAt(2),
+              scoreAt(3),
+              scoreAt(4),
+            ];
+          }).toList(),
+        );
+    }
+  }
+
+  bool _matchesStatus(PlayerSummary player) {
+    if (_selectedStatus == 'نشط') return player.isActive;
+    if (_selectedStatus == 'منتهي') return !player.isActive;
+    return true;
+  }
+
+  bool _matchesStatusDate(DateTime? date) {
+    if (_selectedStatus == 'نشط') return _isActiveDate(date);
+    if (_selectedStatus == 'منتهي') return !_isActiveDate(date);
+    return true;
+  }
+
+  bool _isActiveDate(DateTime? date) {
+    if (date == null) return false;
+    final now = DateTime.now();
+    return !date.isBefore(DateTime(now.year, now.month, now.day));
+  }
+
+  bool _matchesPeriod(DateTime? date) {
+    if (date == null || _selectedTimePeriod == 'كل الوقت') return true;
+    final now = DateTime.now();
+    final start = switch (_selectedTimePeriod) {
+      'هذا الشهر' => DateTime(now.year, now.month),
+      'آخر 3 أشهر' => DateTime(now.year, now.month - 2),
+      'هذه السنة' => DateTime(now.year),
+      _ => null,
+    };
+    return start == null || !date.isBefore(start);
+  }
+
+  String _formatDateText(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '');
+    if (date == null) return value?.toString() ?? '';
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
+
+  DateTime? _parseDisplayDate(String value) {
+    final parts = value.split('/');
+    if (parts.length != 3) return DateTime.tryParse(value);
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    return DateTime(year, month, day);
+  }
 }
 
 enum _ReportExportFormat { pdf, excel }
+
+enum _ReportKey { players, subscriptions, revenue, evaluations }
 
 class _ReportFiltersCard extends StatelessWidget {
   const _ReportFiltersCard({
@@ -222,39 +412,30 @@ class _ReportFiltersCard extends StatelessWidget {
               ],
             ),
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _FilterSection(
-                  icon: Iconsax.calendar,
-                  title: 'الفترة الزمنية',
-                  selectedValue: selectedTimePeriod,
-                  accentColor: AppColors.orange,
-                  child: _FilterChipWrap(
-                    values: timePeriods,
-                    selectedValue: selectedTimePeriod,
-                    selectedColor: AppColors.orange,
-                    onChanged: onTimePeriodChanged,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _FilterSection(
-                  icon: Iconsax.filter,
-                  title: 'حالة الاشتراك',
-                  selectedValue: selectedStatus,
-                  accentColor: AppColors.accentBlueDark,
-                  child: _FilterChipWrap(
-                    values: statuses,
-                    selectedValue: selectedStatus,
-                    selectedColor: AppColors.accentBlueDark,
-                    onChanged: onStatusChanged,
-                  ),
-                ),
-              ),
-            ],
+          _FilterSection(
+            icon: Iconsax.calendar,
+            title: 'الفترة الزمنية',
+            selectedValue: selectedTimePeriod,
+            accentColor: AppColors.orange,
+            child: _FilterChipWrap(
+              values: timePeriods,
+              selectedValue: selectedTimePeriod,
+              selectedColor: AppColors.orange,
+              onChanged: onTimePeriodChanged,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _FilterSection(
+            icon: Iconsax.filter,
+            title: 'حالة الاشتراك',
+            selectedValue: selectedStatus,
+            accentColor: AppColors.accentBlueDark,
+            child: _FilterChipWrap(
+              values: statuses,
+              selectedValue: selectedStatus,
+              selectedColor: AppColors.accentBlueDark,
+              onChanged: onStatusChanged,
+            ),
           ),
         ],
       ),
@@ -614,6 +795,7 @@ class _ExportButton extends StatelessWidget {
 
 class _ReportItem {
   const _ReportItem({
+    required this.key,
     required this.title,
     required this.subtitle,
     required this.metric,
@@ -621,6 +803,7 @@ class _ReportItem {
     required this.color,
   });
 
+  final _ReportKey key;
   final String title;
   final String subtitle;
   final String metric;

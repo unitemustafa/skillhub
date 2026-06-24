@@ -8,6 +8,7 @@ import 'package:skillhub/core/localization/app_localizations.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
+import 'package:skillhub/features/profile/data/profile_repository.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -18,9 +19,31 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final _formKey = GlobalKey<FormState>();
+  final _profileRepository = ProfileRepository();
   final _nameController = TextEditingController(text: 'مدير الأكاديمية');
   final _emailController = TextEditingController(text: 'admin@skillhub.com');
   XFile? _imageFile;
+  bool _profileLoaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_profileLoaded) {
+      return;
+    }
+    _profileLoaded = true;
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _profileRepository.loadProfile(context.l10n);
+    if (!mounted) return;
+    _nameController.text = profile.displayName;
+    _emailController.text = profile.email;
+    if (profile.imagePath?.isNotEmpty == true) {
+      setState(() => _imageFile = XFile(profile.imagePath!));
+    }
+  }
 
   @override
   void dispose() {
@@ -29,10 +52,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
     super.dispose();
   }
 
-  void _saveProfile() {
+  Future<void> _saveProfile() async {
     if (_formKey.currentState?.validate() ?? false) {
+      await _profileRepository.saveProfile(
+        displayName: _nameController.text,
+        imagePath: _imageFile?.path,
+      );
+      if (!mounted) return;
       SnackbarUtils.showSuccess(context, context.l10n.profileSaved);
-      Navigator.of(context).pop({'image': _imageFile});
+      Navigator.of(context).pop({
+        'name': _nameController.text.trim(),
+        'email': _emailController.text.trim(),
+        'image': _imageFile,
+      });
     }
   }
 
@@ -78,74 +110,75 @@ class _EditProfilePageState extends State<EditProfilePage> {
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.dividerColor.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                isArabic
-                    ? 'طµظˆط±ط© ط§ظ„ظ…ظ„ظپ ط§ظ„ط´ط®طµظٹ'
-                    : 'Profile Picture',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isArabic
-                    ? 'ط§ط®طھط± ظ…طµط¯ط± ط§ظ„طµظˆط±ط© ظ„طھط­ط¯ظٹط« ظ…ظ„ظپظƒ ط§ظ„ط´ط®طµظٹ'
-                    : 'Select image source to update your profile',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: secondaryColor,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildSourceOption(
-                    icon: Iconsax.camera,
-                    label: isArabic ? 'ط§ظ„ظƒط§ظ…ظٹط±ط§' : 'Camera',
-                    color: AppColors.accentBlue,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _pickImage(ImageSource.camera);
-                    },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  _buildSourceOption(
-                    icon: Iconsax.gallery,
-                    label: isArabic ? 'ط§ظ„ظ…ط¹ط±ط¶' : 'Gallery',
-                    color: AppColors.greenBright,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _pickImage(ImageSource.gallery);
-                    },
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  isArabic ? 'صورة الملف الشخصي' : 'Profile Picture',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
                   ),
-                  if (_imageFile != null)
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isArabic
+                      ? 'اختر مصدر الصورة'
+                      : 'Select image source to update your profile',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: secondaryColor,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
                     _buildSourceOption(
-                      icon: Iconsax.trash,
-                      label: isArabic ? 'ط¥ط²ط§ظ„ط©' : 'Remove',
-                      color: AppColors.red,
+                      icon: Iconsax.camera,
+                      label: isArabic ? 'الكاميرا' : 'Camera',
+                      color: AppColors.accentBlue,
                       onTap: () {
                         Navigator.pop(ctx);
-                        setState(() {
-                          _imageFile = null;
-                        });
+                        _pickImage(ImageSource.camera);
                       },
                     ),
-                ],
-              ),
-              const SizedBox(height: 30),
-            ],
+                    _buildSourceOption(
+                      icon: Iconsax.gallery,
+                      label: isArabic ? 'المعرض' : 'Gallery',
+                      color: AppColors.greenBright,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _pickImage(ImageSource.gallery);
+                      },
+                    ),
+                    if (_imageFile != null)
+                      _buildSourceOption(
+                        icon: Iconsax.trash,
+                        label: isArabic ? 'إزالة' : 'Remove',
+                        color: AppColors.red,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          setState(() {
+                            _imageFile = null;
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },

@@ -264,6 +264,14 @@ const sendIdempotent = async (
   return res.status(result.statusCode).json(result.body);
 };
 
+const sumTransactionsByType = (
+  transactions: Array<{ type: string; amount: number }>,
+  type: "income" | "expense",
+) =>
+  transactions
+    .filter((transaction) => transaction.type === type)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+
 api.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "skillhub-api" });
 });
@@ -571,22 +579,22 @@ api.post("/subscriptions", async (req, res) => {
   return sendIdempotent(req, res, ownerId, async () => ({
     statusCode: 201,
     body: await prisma.$transaction(async (tx) => {
-    const created = await tx.subscription.create({
-      data: { ...input, ownerId },
-    });
-    await tx.player.update({
-      where: { id: input.playerId },
-      data: { isActive: true },
-    });
-    await tx.financeTransaction.create({
-      data: {
-        ownerId,
-        type: "income",
-        category: "subscription",
-        amount: input.amount,
-        description: `اشتراك اللاعب ${input.playerId}`,
-      },
-    });
+      const created = await tx.subscription.create({
+        data: { ...input, ownerId },
+      });
+      await tx.player.update({
+        where: { id: input.playerId },
+        data: { isActive: true },
+      });
+      await tx.financeTransaction.create({
+        data: {
+          ownerId,
+          type: "income",
+          category: "subscription",
+          amount: input.amount,
+          description: `اشتراك اللاعب ${input.playerId}`,
+        },
+      });
       return created;
     }),
   }));
@@ -838,12 +846,8 @@ api.get("/dashboard", async (_req, res) => {
     prisma.notification.count({ where: { ownerId, isRead: false } }),
   ]);
 
-  const income = finances
-    .filter((item) => item.type === "income")
-    .reduce((sum, item) => sum + item.amount, 0);
-  const expenses = finances
-    .filter((item) => item.type === "expense")
-    .reduce((sum, item) => sum + item.amount, 0);
+  const income = sumTransactionsByType(finances, "income");
+  const expenses = sumTransactionsByType(finances, "expense");
 
   res.json({
     players,

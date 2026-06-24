@@ -492,12 +492,22 @@ class SyncService {
       final birthDate = _date(json['birthDate']);
       if (id == null || birthDate == null) continue;
       final updatedAt = _date(json['updatedAt']) ?? now;
+      final existing =
+          await (_database.select(_database.localPlayers)
+                ..where((table) => table.userId.equals(session.userId))
+                ..where(
+                  (table) =>
+                      table.localId.equals(id) | table.serverId.equals(id),
+                ))
+              .getSingleOrNull();
       await _database
           .into(_database.localPlayers)
           .insertOnConflictUpdate(
             LocalPlayersCompanion.insert(
-              localId: id,
+              localId: existing?.localId ?? id,
               serverId: Value(id),
+              tenantId: Value(session.tenantId),
+              academyId: Value(session.academyId),
               ownerId: session.userId,
               userId: session.userId,
               name: json['name']?.toString() ?? '',
@@ -528,14 +538,25 @@ class SyncService {
       final endDate = _date(json['endDate']);
       if (id == null || startDate == null || endDate == null) continue;
       final updatedAt = _date(json['updatedAt']) ?? now;
+      final existing =
+          await (_database.select(_database.localSubscriptions)
+                ..where((table) => table.userId.equals(session.userId))
+                ..where(
+                  (table) =>
+                      table.localId.equals(id) | table.serverId.equals(id),
+                ))
+              .getSingleOrNull();
       await _database
           .into(_database.localSubscriptions)
           .insertOnConflictUpdate(
             LocalSubscriptionsCompanion.insert(
-              localId: id,
+              localId: existing?.localId ?? id,
               serverId: Value(id),
+              tenantId: Value(session.tenantId),
+              academyId: Value(session.academyId),
               ownerId: session.userId,
               userId: session.userId,
+              playerLocalId: Value(existing?.playerLocalId),
               playerServerId: Value(json['playerId']?.toString()),
               amount: _double(json['amount']),
               startDate: startDate,
@@ -561,14 +582,25 @@ class SyncService {
       final evaluationDate = _date(json['evaluationDate']);
       if (id == null || evaluationDate == null) continue;
       final updatedAt = _date(json['updatedAt']) ?? now;
+      final existing =
+          await (_database.select(_database.localEvaluations)
+                ..where((table) => table.userId.equals(session.userId))
+                ..where(
+                  (table) =>
+                      table.localId.equals(id) | table.serverId.equals(id),
+                ))
+              .getSingleOrNull();
       await _database
           .into(_database.localEvaluations)
           .insertOnConflictUpdate(
             LocalEvaluationsCompanion.insert(
-              localId: id,
+              localId: existing?.localId ?? id,
               serverId: Value(id),
+              tenantId: Value(session.tenantId),
+              academyId: Value(session.academyId),
               ownerId: session.userId,
               userId: session.userId,
+              playerLocalId: Value(existing?.playerLocalId),
               playerServerId: Value(json['playerId']?.toString()),
               coach: json['coach']?.toString() ?? '',
               evaluationDate: evaluationDate,

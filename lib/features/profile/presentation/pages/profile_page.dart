@@ -13,6 +13,7 @@ import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/auth/presentation/pages/login_page.dart';
+import 'package:skillhub/features/profile/data/profile_repository.dart';
 import 'package:skillhub/features/profile/presentation/pages/edit_profile_page.dart';
 import 'package:skillhub/features/profile/presentation/widgets/profile_menu_item.dart';
 
@@ -36,6 +37,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   bool _notificationsEnabled = true;
   XFile? _profileImage;
+  String? _displayName;
+  String? _profileEmail;
+
+  final _profileRepository = ProfileRepository();
 
   String _themeModeLabel(AppLocalizations l10n, ThemeMode mode) {
     return switch (mode) {
@@ -45,12 +50,15 @@ class _ProfilePageState extends State<ProfilePage> {
     };
   }
 
-  Widget _buildAvatarImage() {
-    if (_profileImage != null) {
+  Widget _buildAvatarImage([String? savedImagePath]) {
+    final imageFile =
+        _profileImage ??
+        (savedImagePath?.isNotEmpty == true ? XFile(savedImagePath!) : null);
+    if (imageFile != null) {
       if (kIsWeb) {
         return ClipOval(
           child: Image.network(
-            _profileImage!.path,
+            imageFile.path,
             width: 100,
             height: 100,
             fit: BoxFit.cover,
@@ -59,7 +67,7 @@ class _ProfilePageState extends State<ProfilePage> {
       } else {
         return ClipOval(
           child: Image.file(
-            File(_profileImage!.path),
+            File(imageFile.path),
             width: 100,
             height: 100,
             fit: BoxFit.cover,
@@ -308,207 +316,228 @@ class _ProfilePageState extends State<ProfilePage> {
         AppColors.textSecondary;
     final appState = SkillHubApp.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: CustomScrollView(
-        physics: const ClampingScrollPhysics(),
-        slivers: [
-          AppBluePageHeader(
-            title: l10n.profile,
-            showBackButton: widget.showBackButton,
-            pinned: false,
-            floating: false,
-            snap: false,
-            bottomHeight: 224,
-            bottom: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 108,
-                  height: 108,
-                  decoration: BoxDecoration(
-                    color: AppColors.white.withValues(
-                      alpha: isDark ? 0.18 : 0.2,
-                    ),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.white, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.navy.withValues(alpha: 0.16),
-                        blurRadius: 24,
-                        offset: const Offset(0, 12),
-                      ),
-                    ],
-                  ),
-                  child: _buildAvatarImage(),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  l10n.systemAdmin,
-                  style: const TextStyle(
-                    color: AppColors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'admin@skillhub.com',
-                  style: TextStyle(
-                    color: AppColors.white.withValues(alpha: 0.76),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final result = await Navigator.of(context)
-                        .push<Map<String, dynamic>?>(
-                          MaterialPageRoute(
-                            builder: (_) => const EditProfilePage(),
-                          ),
-                        );
-                    if (result != null && mounted) {
-                      setState(() {
-                        _profileImage = result['image'] as XFile?;
-                      });
-                    }
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.white,
-                    side: BorderSide(
-                      color: AppColors.white.withValues(alpha: 0.7),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Iconsax.edit_2, size: 17),
-                  label: Text(
-                    l10n.editProfile,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.all(20),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(
-                            start: 8,
-                            bottom: 16,
-                          ),
-                          child: Text(
-                            l10n.appPreferences,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: secondaryColor,
-                            ),
-                          ),
-                        ),
+    return FutureBuilder<ProfileData>(
+      future: _profileRepository.loadProfile(l10n),
+      builder: (context, profileSnapshot) {
+        final profile = profileSnapshot.data;
+        final displayName =
+            _displayName ?? profile?.displayName ?? l10n.systemAdmin;
+        final profileEmail =
+            _profileEmail ?? profile?.email ?? 'admin@skillhub.com';
 
-                        ProfileMenuItem(
-                          title: l10n.isArabic ? 'مظهر التطبيق' : 'App theme',
-                          trailingText: _themeModeLabel(
-                            l10n,
-                            appState.themeMode,
+        return Scaffold(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          body: CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              AppBluePageHeader(
+                title: l10n.profile,
+                showBackButton: widget.showBackButton,
+                pinned: false,
+                floating: false,
+                snap: false,
+                bottomHeight: 224,
+                bottom: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 108,
+                      height: 108,
+                      decoration: BoxDecoration(
+                        color: AppColors.white.withValues(
+                          alpha: isDark ? 0.18 : 0.2,
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.white, width: 4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.navy.withValues(alpha: 0.16),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
                           ),
-                          icon: Iconsax.moon,
-                          onTap: _showThemeModeSheet,
+                        ],
+                      ),
+                      child: _buildAvatarImage(profile?.imagePath),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      profileEmail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppColors.white.withValues(alpha: 0.76),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.of(context)
+                            .push<Map<String, dynamic>?>(
+                              MaterialPageRoute(
+                                builder: (_) => const EditProfilePage(),
+                              ),
+                            );
+                        if (result != null && mounted) {
+                          setState(() {
+                            _displayName = result['name'] as String?;
+                            _profileEmail = result['email'] as String?;
+                            _profileImage = result['image'] as XFile?;
+                          });
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.white,
+                        side: BorderSide(
+                          color: AppColors.white.withValues(alpha: 0.7),
                         ),
-                        ProfileMenuItem(
-                          title: l10n.appNotifications,
-                          icon: Iconsax.notification,
-                          hasSwitch: true,
-                          switchValue: _notificationsEnabled,
-                          onSwitchChanged: (val) {
-                            setState(() => _notificationsEnabled = val);
-                          },
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 10,
                         ),
-                      ],
-                    )
-                    .animate(delay: 200.ms)
-                    .fade(duration: 400.ms)
-                    .slideY(begin: 0.1),
-              ]),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: 30,
-            ),
-            sliver: SliverToBoxAdapter(
-              child:
-                  Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: AppSurfaceCard(
-                          padding: EdgeInsets.zero,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(16),
-                              onTap: _handleLogout,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                  horizontal: 18,
-                                ),
-                                child: Row(
-                                  textDirection: l10n.isArabic
-                                      ? TextDirection.rtl
-                                      : TextDirection.ltr,
-                                  children: [
-                                    Text(
-                                      l10n.logout,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.red,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.red.withValues(
-                                          alpha: 0.1,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: const Icon(
-                                        Iconsax.logout_1,
-                                        color: AppColors.red,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Iconsax.edit_2, size: 17),
+                      label: Text(
+                        l10n.editProfile,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.all(20),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                start: 8,
+                                bottom: 16,
+                              ),
+                              child: Text(
+                                l10n.appPreferences,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: secondaryColor,
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                      )
-                      .animate(delay: 300.ms)
-                      .fade(duration: 400.ms)
-                      .slideY(begin: 0.1),
-            ),
+
+                            ProfileMenuItem(
+                              title: l10n.isArabic
+                                  ? 'مظهر التطبيق'
+                                  : 'App theme',
+                              trailingText: _themeModeLabel(
+                                l10n,
+                                appState.themeMode,
+                              ),
+                              icon: Iconsax.moon,
+                              onTap: _showThemeModeSheet,
+                            ),
+                            ProfileMenuItem(
+                              title: l10n.appNotifications,
+                              icon: Iconsax.notification,
+                              hasSwitch: true,
+                              switchValue: _notificationsEnabled,
+                              onSwitchChanged: (val) {
+                                setState(() => _notificationsEnabled = val);
+                              },
+                            ),
+                          ],
+                        )
+                        .animate(delay: 200.ms)
+                        .fade(duration: 400.ms)
+                        .slideY(begin: 0.1),
+                  ]),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 30,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child:
+                      Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: AppSurfaceCard(
+                              padding: EdgeInsets.zero,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(16),
+                                  onTap: _handleLogout,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                      horizontal: 18,
+                                    ),
+                                    child: Row(
+                                      textDirection: l10n.isArabic
+                                          ? TextDirection.rtl
+                                          : TextDirection.ltr,
+                                      children: [
+                                        Text(
+                                          l10n.logout,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.red,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.red.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Iconsax.logout_1,
+                                            color: AppColors.red,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .animate(delay: 300.ms)
+                          .fade(duration: 400.ms)
+                          .slideY(begin: 0.1),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

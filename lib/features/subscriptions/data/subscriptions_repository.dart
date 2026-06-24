@@ -15,8 +15,9 @@ class SubscriptionsRepository {
   final Uuid _uuid;
 
   Future<List<Map<String, dynamic>>> listSubscriptions(
-    LocalSession session,
-  ) async {
+    LocalSession session, {
+    String? playerId,
+  }) async {
     final rows =
         await (_database.select(_database.localSubscriptions)
               ..where((table) => table.userId.equals(session.userId))
@@ -28,7 +29,16 @@ class SubscriptionsRepository {
                 ),
               ]))
             .get();
-    return Future.wait(rows.map((row) => _toJson(session, row)));
+    final filtered = playerId == null
+        ? rows
+        : rows
+              .where(
+                (row) =>
+                    row.playerLocalId == playerId ||
+                    row.playerServerId == playerId,
+              )
+              .toList(growable: false);
+    return Future.wait(filtered.map((row) => _toJson(session, row)));
   }
 
   Future<void> createSubscription(
@@ -78,12 +88,62 @@ class SubscriptionsRepository {
     });
   }
 
+  Future<DateTime> renewSubscription(
+    LocalSession session,
+    PlayerSummary player,
+  ) async {
+    final latestSubscription = await _findLatestSubscription(
+      session,
+      player.id,
+    );
+    if (latestSubscription == null) {
+      throw Exception('لا يوجد اشتراك سابق لهذا اللاعب للتجديد.');
+    }
+
+    final today = _dateOnly(DateTime.now());
+    final latestEndDate = _dateOnly(latestSubscription.endDate);
+    final startDate = latestEndDate.isAfter(today) ? latestEndDate : today;
+    final endDate = _addOneMonth(startDate);
+
+    await createSubscription(session, player, {
+      'playerId': player.id,
+      'amount': latestSubscription.amount,
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate.toIso8601String(),
+      'notes': 'تجديد اشتراك',
+    });
+
+    return endDate;
+  }
+
   Future<LocalPlayer?> _findPlayer(LocalSession session, String id) {
     return (_database.select(_database.localPlayers)
           ..where((table) => table.userId.equals(session.userId))
           ..where(
             (table) => table.localId.equals(id) | table.serverId.equals(id),
           ))
+        .getSingleOrNull();
+  }
+
+  Future<LocalSubscription?> _findLatestSubscription(
+    LocalSession session,
+    String playerId,
+  ) {
+    return (_database.select(_database.localSubscriptions)
+          ..where((table) => table.userId.equals(session.userId))
+          ..where((table) => table.deletedAt.isNull())
+          ..where(
+            (table) =>
+                table.playerLocalId.equals(playerId) |
+                table.playerServerId.equals(playerId),
+          )
+          ..orderBy([
+            (table) => OrderingTerm(
+              expression: table.endDate,
+              mode: OrderingMode.desc,
+            ),
+          ])
+          ..limit(1))
         .getSingleOrNull();
   }
 
@@ -154,5 +214,17 @@ class SubscriptionsRepository {
   double _double(dynamic value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  DateTime _addOneMonth(DateTime value) {
+    final nextMonth = value.month == 12 ? 1 : value.month + 1;
+    final nextYear = value.month == 12 ? value.year + 1 : value.year;
+    final lastDayOfNextMonth = DateTime(nextYear, nextMonth + 1, 0).day;
+    final day = value.day > lastDayOfNextMonth ? lastDayOfNextMonth : value.day;
+    return DateTime(nextYear, nextMonth, day);
   }
 }

@@ -6,9 +6,10 @@ import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/players/presentation/pages/player_details_page.dart';
 
 class PlayerCard extends StatelessWidget {
-  const PlayerCard({super.key, required this.player});
+  const PlayerCard({super.key, required this.player, this.onChanged});
 
   final PlayerSummary player;
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -18,13 +19,16 @@ class PlayerCard extends StatelessWidget {
 
     return RepaintBoundary(
       child: GestureDetector(
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          final changed = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
               builder: (context) => PlayerDetailsPage(player: player),
             ),
           );
+          if (changed == true) {
+            onChanged?.call();
+          }
         },
         child: AppSurfaceCard(
           child: Row(

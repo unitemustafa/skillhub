@@ -23,7 +23,6 @@ class AdminDashboardPage extends StatefulWidget {
 }
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
-  static const _localUsersKey = 'skillhub_admin_local_users';
   static const _sessionKeys = [
     'skillhub_session_expires_at',
     'skillhub_session_remembered',
@@ -78,17 +77,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  // ignore: unused_element
-  Future<List<_AdminUser>> _loadLocalUsers() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rawUsers = prefs.getStringList(_localUsersKey) ?? const [];
-    return rawUsers
-        .map((raw) => jsonDecode(raw))
-        .whereType<Map<String, dynamic>>()
-        .map((json) => _AdminUser.fromJson(json, source: 'محلي'))
-        .toList();
-  }
-
   Future<List<_AdminUser>> _loadCachedUsers() async {
     final rows =
         await (_database.select(_database.adminUsersCache)..orderBy([
@@ -128,20 +116,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   void _showOnlineRequired() {
     if (!mounted) return;
     SnackbarUtils.showError(context, 'هذه العملية تحتاج اتصال بالإنترنت');
-  }
-
-  // ignore: unused_element
-  List<_AdminUser> _mergeUsers(
-    List<_AdminUser> first,
-    List<_AdminUser> second,
-  ) {
-    final byEmail = <String, _AdminUser>{};
-    for (final user in [...first, ...second]) {
-      byEmail[user.email.toLowerCase()] = user;
-    }
-    final users = byEmail.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return users;
   }
 
   Future<void> _createUser() async {
@@ -321,79 +295,56 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           onPressed: _logout,
           icon: const Icon(Iconsax.logout_1),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'تحديث',
-            onPressed: () {
-              setState(() {
-                _usersFuture = _loadUsers();
-              });
-            },
-            icon: const Icon(Iconsax.refresh),
-          ),
-        ],
       ),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            setState(() {
-              _usersFuture = _loadUsers();
-            });
-            await _usersFuture;
-          },
-          child: FutureBuilder<List<_AdminUser>>(
-            future: _usersFuture,
-            builder: (context, snapshot) {
-              final users = snapshot.data ?? const <_AdminUser>[];
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _AdminHeader(
-                    connectedToApi: widget.connectedToApi && !_usingLocalUsers,
-                  ),
-                  if (_usingLocalUsers) ...[
-                    const SizedBox(height: 10),
-                    const AppSurfaceCard(
-                      child: Text(
-                        'وضع عرض فقط. عمليات الإدارة تحتاج اتصال بالإنترنت',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
+        child: FutureBuilder<List<_AdminUser>>(
+          future: _usersFuture,
+          builder: (context, snapshot) {
+            final users = snapshot.data ?? const <_AdminUser>[];
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_usingLocalUsers) ...[
+                  const AppSurfaceCard(
+                    child: Text(
+                      'وضع عرض فقط. عمليات الإدارة تحتاج اتصال بالإنترنت',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
-                  ],
-                  const SizedBox(height: 16),
-                  _CreateUserCard(
-                    formKey: _formKey,
-                    nameController: _nameController,
-                    emailController: _emailController,
-                    passwordController: _passwordController,
-                    activationPlan: _activationPlan,
-                    onActivationPlanChanged: (value) {
-                      setState(() {
-                        _activationPlan = value;
-                      });
-                    },
-                    isCreating: _isCreating,
-                    isReadOnly: _usingLocalUsers,
-                    onCreate: _createUser,
                   ),
-                  const SizedBox(height: 16),
-                  if (snapshot.connectionState == ConnectionState.waiting)
-                    const SizedBox(
-                      height: 140,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else
-                    _UsersCard(
-                      users: users,
-                      isReadOnly: _usingLocalUsers,
-                      onUserTap: _openUserOverview,
-                      onUserDelete: _deleteUser,
-                    ),
                 ],
-              );
-            },
-          ),
+                const SizedBox(height: 16),
+                _CreateUserCard(
+                  formKey: _formKey,
+                  nameController: _nameController,
+                  emailController: _emailController,
+                  passwordController: _passwordController,
+                  activationPlan: _activationPlan,
+                  onActivationPlanChanged: (value) {
+                    setState(() {
+                      _activationPlan = value;
+                    });
+                  },
+                  isCreating: _isCreating,
+                  isReadOnly: _usingLocalUsers,
+                  onCreate: _createUser,
+                ),
+                const SizedBox(height: 16),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const SizedBox(
+                    height: 140,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else
+                  _UsersCard(
+                    users: users,
+                    isReadOnly: _usingLocalUsers,
+                    onUserTap: _openUserOverview,
+                    onUserDelete: _deleteUser,
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -515,64 +466,6 @@ class _AdminUserOverviewPage extends StatelessWidget {
 
   static String _formatDate(DateTime date) {
     return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
-  }
-}
-
-class _AdminHeader extends StatelessWidget {
-  const _AdminHeader({required this.connectedToApi});
-
-  final bool connectedToApi;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AppSurfaceCard(
-      radius: 18,
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.accentBlueSoft,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(
-              Iconsax.profile_2user,
-              color: AppColors.accentBlueDark,
-              size: 30,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'حسابات العملاء',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  connectedToApi
-                      ? 'متصل بالخادم'
-                      : 'الحسابات تحفظ محليا لحين تحديث الخادم',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: connectedToApi
-                        ? AppColors.green
-                        : AppColors.orangeDark,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 

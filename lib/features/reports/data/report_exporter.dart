@@ -10,11 +10,15 @@ class ReportExportData {
     required this.title,
     required this.timePeriod,
     required this.status,
+    this.tableHeaders = const [],
+    this.tableRows = const [],
   });
 
   final String title;
   final String timePeriod;
   final String status;
+  final List<String> tableHeaders;
+  final List<List<String>> tableRows;
 
   String get safeFileName {
     final normalized = title
@@ -32,6 +36,22 @@ class ReportExportData {
     ['حالة الاشتراك', status],
     ['تاريخ التصدير', _formatDateTime(DateTime.now())],
   ];
+
+  List<List<String>> get exportTableRows {
+    if (tableHeaders.isEmpty) {
+      return rows;
+    }
+    return [
+      tableHeaders,
+      if (tableRows.isEmpty)
+        List<String>.generate(
+          tableHeaders.length,
+          (index) => index == 0 ? 'لا توجد بيانات مطابقة للتصفية' : '',
+        )
+      else
+        ...tableRows,
+    ];
+  }
 
   static String _formatDateTime(DateTime value) {
     final date =
@@ -116,6 +136,22 @@ class ReportExporter {
               vertical: 8,
             ),
           ),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headers: data.exportTableRows.first,
+            data: data.exportTableRows.skip(1).toList(),
+            border: pw.TableBorder.all(color: PdfColors.grey300),
+            headerDecoration: const pw.BoxDecoration(
+              color: PdfColors.blueGrey50,
+            ),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            cellAlignment: pw.Alignment.centerRight,
+            headerAlignment: pw.Alignment.centerRight,
+            cellPadding: const pw.EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 7,
+            ),
+          ),
         ],
       ),
     );
@@ -147,10 +183,39 @@ class ReportExporter {
     final header = sheet.getRangeByName('A3:B3');
     header.cellStyle.bold = true;
     header.cellStyle.backColor = '#EAF0FF';
-    sheet.getRangeByIndex(1, 1, data.rows.length + 2, 2).cellStyle.fontName =
+    final tableStartRow = data.rows.length + 5;
+    final table = data.exportTableRows;
+    for (var rowIndex = 0; rowIndex < table.length; rowIndex += 1) {
+      final row = table[rowIndex];
+      final excelRow = tableStartRow + rowIndex;
+      for (var columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+        sheet
+            .getRangeByIndex(excelRow, columnIndex + 1)
+            .setText(row[columnIndex]);
+      }
+    }
+    final tableHeader = sheet.getRangeByIndex(
+      tableStartRow,
+      1,
+      tableStartRow,
+      table.first.length,
+    );
+    tableHeader.cellStyle.bold = true;
+    tableHeader.cellStyle.backColor = '#EAF0FF';
+    sheet
+            .getRangeByIndex(
+              1,
+              1,
+              tableStartRow + table.length,
+              table.first.length,
+            )
+            .cellStyle
+            .fontName =
         'Arial';
     sheet.getRangeByIndex(1, 1).columnWidth = 24;
-    sheet.getRangeByIndex(1, 2).columnWidth = 32;
+    for (var column = 2; column <= table.first.length; column += 1) {
+      sheet.getRangeByIndex(1, column).columnWidth = 22;
+    }
 
     final bytes = workbook.saveAsStream();
     workbook.dispose();

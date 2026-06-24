@@ -220,6 +220,12 @@ class _PlayersPageState extends State<PlayersPage> {
                           return PlayerCard(
                             key: ValueKey(visiblePlayers[index].id),
                             player: visiblePlayers[index],
+                            onChanged: () {
+                              if (!mounted) return;
+                              setState(() {
+                                _playersFuture = _loadPlayers();
+                              });
+                            },
                           );
                         },
                       ),

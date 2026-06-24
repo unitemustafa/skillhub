@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/subscriptions/data/subscriptions_repository.dart';
@@ -18,6 +20,7 @@ class NewSubscriptionPage extends StatefulWidget {
 class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
   final _repository = SubscriptionsRepository();
   final _sessionService = SessionService();
+  final _syncService = SyncService();
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
@@ -75,15 +78,13 @@ class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
             ? null
             : _notesController.text.trim(),
       });
+      final synced = await _trySync();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'تم الحفظ محليًا وسيتم المزامنة عند رجوع الإنترنت',
-            textAlign: TextAlign.center,
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
+      SnackbarUtils.showSuccess(
+        context,
+        synced
+            ? 'تم حفظ الاشتراك وتمت المزامنة.'
+            : 'تم حفظ الاشتراك وسيتم المزامنة تلقائيًا.',
       );
       Navigator.pop(context, true);
     } catch (error) {
@@ -99,6 +100,15 @@ class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
       if (mounted) {
         setState(() => _isSaving = false);
       }
+    }
+  }
+
+  Future<bool> _trySync() async {
+    try {
+      await _syncService.syncNow();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

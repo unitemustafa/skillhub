@@ -4,10 +4,10 @@ import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
-import 'package:skillhub/features/players/presentation/pages/new_subscription_page.dart';
 import 'package:skillhub/features/subscriptions/data/subscriptions_repository.dart';
 
 class SubscriptionsPage extends StatefulWidget {
@@ -25,6 +25,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   final _syncService = SyncService();
   String _filter = 'الكل';
   String _query = '';
+  String? _renewingSubscriptionId;
   late Future<List<_SubscriptionItem>> _subscriptionsFuture;
 
   @override
@@ -70,6 +71,54 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   }
 
   String _normalizeSearch(String value) => value.trim().toLowerCase();
+
+  Future<void> _renewSubscription(_SubscriptionItem item) async {
+    final player = item.player;
+    if (_renewingSubscriptionId != null || player == null) return;
+    setState(() => _renewingSubscriptionId = item.id);
+    try {
+      final session = await _sessionService.readLastSession();
+      if (session == null || session.isExpired) {
+        throw Exception(
+          'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
+        );
+      }
+      final endDate = await _repository.renewSubscription(session, player);
+      final synced = await _trySync();
+      if (!mounted) return;
+      setState(() {
+        _subscriptionsFuture = _loadSubscriptions();
+      });
+      SnackbarUtils.showSuccess(
+        context,
+        synced
+            ? 'تم تجديد اشتراك ${item.playerName} حتى ${_formatDate(endDate)} وتمت المزامنة.'
+            : 'تم تجديد اشتراك ${item.playerName} حتى ${_formatDate(endDate)} وسيتم المزامنة تلقائيًا.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      SnackbarUtils.showError(context, error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _renewingSubscriptionId = null);
+      }
+    }
+  }
+
+  Future<bool> _trySync() async {
+    try {
+      await _syncService.syncNow();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -207,6 +256,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                       itemBuilder: (context, index) {
                         final item = items[index];
                         final active = item.status == 'نشط';
+                        final isRenewing = _renewingSubscriptionId == item.id;
                         return AppSurfaceCard(
                           child: Row(
                             children: [
@@ -281,16 +331,16 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
                                     ),
                                     onPressed: item.player == null
                                         ? null
-                                        : () => Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  NewSubscriptionPage(
-                                                    player: item.player!,
-                                                  ),
+                                        : () => _renewSubscription(item),
+                                    child: isRenewing
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
                                             ),
-                                          ),
-                                    child: Text(active ? 'تجديد' : 'تفعيل'),
+                                          )
+                                        : Text(active ? 'تجديد' : 'تفعيل'),
                                   ),
                                 ],
                               ),
@@ -357,6 +407,7 @@ class _HeaderFilterChip extends StatelessWidget {
 
 class _SubscriptionItem {
   const _SubscriptionItem({
+    required this.id,
     required this.playerName,
     required this.playerId,
     required this.amount,
@@ -375,6 +426,7 @@ class _SubscriptionItem {
     final status = endDate != null && endDate.isBefore(now) ? 'منتهي' : 'نشط';
 
     return _SubscriptionItem(
+      id: json['id']?.toString() ?? '',
       playerName: player?.name ?? '',
       playerId: player?.id ?? json['playerId']?.toString() ?? '',
       amount: double.tryParse(json['amount']?.toString() ?? '') ?? 0,
@@ -384,6 +436,7 @@ class _SubscriptionItem {
     );
   }
 
+  final String id;
   final String playerName;
   final String playerId;
   final double amount;

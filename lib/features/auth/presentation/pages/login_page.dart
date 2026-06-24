@@ -9,6 +9,7 @@ import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/features/admin/presentation/pages/admin_dashboard_page.dart';
 import 'package:skillhub/features/auth/presentation/widgets/login_card.dart';
 import 'package:skillhub/features/home/presentation/pages/dashboard_page.dart';
+import 'package:skillhub/features/profile/data/profile_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LoginPage extends StatefulWidget {
@@ -155,6 +156,7 @@ class _LoginPageState extends State<LoginPage> {
     final token = loginData?['token']?.toString();
     final user = loginData?['user'];
     if (token != null && user is Map<String, dynamic>) {
+      await ProfileRepository().seedDisplayName(user['name']?.toString());
       await _sessionService.saveOnlineSession(
         accessToken: token,
         userId: user['id']?.toString() ?? user['email']?.toString() ?? '',

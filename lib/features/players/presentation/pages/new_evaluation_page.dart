@@ -64,7 +64,7 @@ class _NewEvaluationPageState extends State<NewEvaluationPage> {
     setState(() => _isSaving = true);
     try {
       final session = await _sessionService.readLastSession();
-      if (session == null || session.isExpired) {
+      if (session == null) {
         throw Exception(
           'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
         );

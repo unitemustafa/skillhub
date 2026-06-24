@@ -8,6 +8,7 @@ import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/communications/data/messages_repository.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key, this.player, this.initialTemplate});
@@ -24,7 +25,6 @@ class _MessagesPageState extends State<MessagesPage> {
   final _sessionService = SessionService();
   final _syncService = SyncService();
   late final TextEditingController _messageController;
-  String _channel = 'whatsapp';
   bool _schedule = false;
   bool _isSending = false;
   late Future<List<_MessageHistoryItem>> _historyFuture;
@@ -100,34 +100,77 @@ class _MessagesPageState extends State<MessagesPage> {
       await _repository.createMessage(session, widget.player, {
         'playerId': widget.player?.id,
         'recipient': recipient,
-        'channel': _channel,
+        'channel': 'whatsapp',
         'body': body,
         'scheduledAt': _schedule
             ? DateTime.now().add(const Duration(days: 1)).toIso8601String()
             : null,
       });
       if (!mounted) return;
+      if (!_schedule) {
+        await _openWhatsapp(recipient, body);
+      }
+      if (!mounted) return;
       SnackbarUtils.showSuccess(
         context,
-        _schedule ? 'تمت جدولة الرسالة' : 'تم إرسال الرسالة بنجاح',
+        _schedule ? 'تمت جدولة الرسالة' : 'تم فتح واتساب لإرسال الرسالة',
       );
       setState(() {
         _historyFuture = _loadHistory();
       });
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString(), textAlign: TextAlign.center),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      SnackbarUtils.showError(context, _friendlyError(error));
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  Future<void> _openWhatsapp(String recipient, String body) async {
+    final phone = _normalizePhone(recipient);
+    final appUri = Uri.parse(
+      'whatsapp://send?phone=$phone&text=${Uri.encodeComponent(body)}',
+    );
+    if (await _tryLaunch(appUri, LaunchMode.externalNonBrowserApplication)) {
+      return;
+    }
+
+    final webUri = Uri.https('wa.me', '/$phone', {'text': body});
+    if (await _tryLaunch(webUri, LaunchMode.externalApplication)) {
+      return;
+    }
+    throw Exception('تعذر فتح واتساب. تأكد من تثبيت التطبيق وحاول مرة أخرى.');
+  }
+
+  Future<bool> _tryLaunch(Uri uri, LaunchMode mode) async {
+    try {
+      return await launchUrl(uri, mode: mode);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _normalizePhone(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.startsWith('00')) {
+      return digits.substring(2);
+    }
+    if (digits.startsWith('0') && digits.length == 11) {
+      return '20${digits.substring(1)}';
+    }
+    if (digits.startsWith('1') && digits.length == 10) {
+      return '20$digits';
+    }
+    return digits;
+  }
+
+  String _friendlyError(Object error) {
+    final message = error.toString();
+    return message.startsWith('Exception: ')
+        ? message.substring('Exception: '.length)
+        : message;
   }
 
   @override
@@ -236,27 +279,16 @@ class _MessagesPageState extends State<MessagesPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'قناة الإرسال',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(
-                              value: 'whatsapp',
-                              label: Text('واتساب'),
-                              icon: Icon(Icons.chat, size: 17),
-                            ),
-                            ButtonSegment(
-                              value: 'sms',
-                              label: Text('SMS'),
-                              icon: Icon(Iconsax.message, size: 17),
-                            ),
-                          ],
-                          selected: {_channel},
-                          onSelectionChanged: (value) =>
-                              setState(() => _channel = value.first),
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            backgroundColor: AppColors.green,
+                            child: Icon(Icons.chat, color: Colors.white),
+                          ),
+                          title: Text(
+                            'واتساب',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         SwitchListTile(
@@ -304,7 +336,7 @@ class _MessagesPageState extends State<MessagesPage> {
                               color: Colors.white,
                             ),
                       label: Text(
-                        _schedule ? 'جدولة الرسالة' : 'إرسال عبر $_channel',
+                        _schedule ? 'جدولة الرسالة' : 'إرسال عبر واتساب',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,

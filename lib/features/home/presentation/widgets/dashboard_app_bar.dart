@@ -7,6 +7,7 @@ import 'package:skillhub/core/widgets/app_count_badge.dart';
 import 'package:skillhub/features/evaluations/presentation/pages/evaluations_page.dart';
 import 'package:skillhub/features/finances/presentation/pages/finances_page.dart';
 import 'package:skillhub/features/notifications/presentation/pages/notifications_page.dart';
+import 'package:skillhub/features/profile/data/profile_repository.dart';
 import 'package:skillhub/features/profile/presentation/pages/profile_page.dart';
 import 'package:skillhub/features/reports/presentation/pages/reports_page.dart';
 
@@ -39,6 +40,11 @@ class _DashboardHeader extends StatelessWidget {
 
   final VoidCallback? onNotificationsTap;
   final VoidCallback? onProfileTap;
+
+  Future<String> _loadDisplayName(BuildContext context) async {
+    final profile = await ProfileRepository().loadProfile();
+    return profile.displayName;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,14 +101,21 @@ class _DashboardHeader extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          'مدير الأكاديمية',
-                          style: const TextStyle(
-                            color: AppColors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                            height: 1,
-                          ),
+                        FutureBuilder<String>(
+                          future: _loadDisplayName(context),
+                          builder: (context, snapshot) {
+                            return Text(
+                              snapshot.data ?? 'مدير الأكاديمية',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),

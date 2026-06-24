@@ -26,7 +26,7 @@ class PlayersRepository {
                 ),
               ]))
             .get();
-    return rows.map(_toSummary).toList(growable: false);
+    return _dedupeRows(rows).map(_toSummary).toList(growable: false);
   }
 
   Stream<List<PlayerSummary>> watchPlayers(LocalSession session) {
@@ -40,7 +40,9 @@ class PlayersRepository {
             ),
           ]))
         .watch()
-        .map((rows) => rows.map(_toSummary).toList(growable: false));
+        .map(
+          (rows) => _dedupeRows(rows).map(_toSummary).toList(growable: false),
+        );
   }
 
   Future<PlayerSummary> createPlayer(
@@ -171,6 +173,119 @@ class PlayersRepository {
     });
   }
 
+  Future<void> deletePlayer(LocalSession session, PlayerSummary player) async {
+    final now = DateTime.now();
+    final existing =
+        await (_database.select(_database.localPlayers)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull())
+              ..where(
+                (table) =>
+                    table.localId.equals(player.id) |
+                    table.serverId.equals(player.id),
+              ))
+            .getSingleOrNull();
+    if (existing == null) {
+      return;
+    }
+
+    final playerIds = [
+      existing.localId,
+      if (existing.serverId != null) existing.serverId!,
+    ];
+
+    await _database.transaction(() async {
+      await (_database.update(
+        _database.localPlayers,
+      )..where((table) => table.localId.equals(existing.localId))).write(
+        LocalPlayersCompanion(
+          deletedAt: Value(now),
+          updatedAt: Value(now),
+          clientUpdatedAt: Value(now),
+          syncStatus: Value(existing.serverId == null ? 'synced' : 'pending'),
+          lastSyncError: const Value(null),
+        ),
+      );
+
+      await (_database.update(_database.localSubscriptions)
+            ..where((table) => table.userId.equals(session.userId))
+            ..where(
+              (table) =>
+                  table.playerLocalId.isIn(playerIds) |
+                  table.playerServerId.isIn(playerIds),
+            ))
+          .write(
+            LocalSubscriptionsCompanion(
+              deletedAt: Value(now),
+              updatedAt: Value(now),
+              clientUpdatedAt: Value(now),
+            ),
+          );
+
+      await (_database.update(_database.localEvaluations)
+            ..where((table) => table.userId.equals(session.userId))
+            ..where(
+              (table) =>
+                  table.playerLocalId.isIn(playerIds) |
+                  table.playerServerId.isIn(playerIds),
+            ))
+          .write(
+            LocalEvaluationsCompanion(
+              deletedAt: Value(now),
+              updatedAt: Value(now),
+              clientUpdatedAt: Value(now),
+            ),
+          );
+
+      await (_database.update(_database.localMessages)
+            ..where((table) => table.userId.equals(session.userId))
+            ..where(
+              (table) =>
+                  table.playerLocalId.isIn(playerIds) |
+                  table.playerServerId.isIn(playerIds),
+            ))
+          .write(
+            LocalMessagesCompanion(
+              deletedAt: Value(now),
+              updatedAt: Value(now),
+              clientUpdatedAt: Value(now),
+            ),
+          );
+
+      await (_database.delete(_database.syncOutbox)
+            ..where((table) => table.userId.equals(session.userId))
+            ..where((table) => table.entityLocalId.equals(existing.localId))
+            ..where((table) => table.entityType.equals('players'))
+            ..where((table) => table.status.isIn(['pending', 'failed'])))
+          .go();
+
+      for (final id in playerIds) {
+        await (_database.delete(_database.syncOutbox)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where(
+                (table) => table.entityType.isIn([
+                  'subscriptions',
+                  'evaluations',
+                  'messages',
+                ]),
+              )
+              ..where((table) => table.payloadJson.like('%"playerId":"$id"%'))
+              ..where((table) => table.status.isIn(['pending', 'failed'])))
+            .go();
+      }
+
+      if (existing.serverId != null) {
+        await _enqueue(
+          session: session,
+          entityLocalId: existing.localId,
+          entityServerId: existing.serverId,
+          action: 'delete',
+          payload: {'serverId': existing.serverId},
+        );
+      }
+    });
+  }
+
   Future<void> _enqueue({
     required LocalSession session,
     required String entityLocalId,
@@ -216,4 +331,22 @@ class PlayersRepository {
       'lastSyncError': row.lastSyncError,
     });
   }
+
+  List<LocalPlayer> _dedupeRows(List<LocalPlayer> rows) {
+    final byKey = <String, LocalPlayer>{};
+    for (final row in rows) {
+      final key = row.serverId?.isNotEmpty == true
+          ? 'server:${row.serverId}'
+          : 'local:${_normalize(row.name)}|${_normalize(row.phone)}|'
+                '${row.birthDate.toIso8601String()}';
+      final current = byKey[key];
+      if (current == null || row.updatedAt.isAfter(current.updatedAt)) {
+        byKey[key] = row;
+      }
+    }
+    return byKey.values.toList(growable: false)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  String _normalize(String value) => value.trim().toLowerCase();
 }
