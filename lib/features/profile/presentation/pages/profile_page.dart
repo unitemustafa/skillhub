@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillhub/app/app.dart';
 import 'package:skillhub/core/localization/app_localizations.dart';
 import 'package:skillhub/core/network/api_client.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
@@ -160,6 +161,7 @@ class _ProfilePageState extends State<ProfilePage> {
     for (final key in _sessionKeys) {
       await prefs.remove(key);
     }
+    await SessionService().clearCurrentAccount();
     await ApiClient().clearToken();
     if (!mounted) return;
 

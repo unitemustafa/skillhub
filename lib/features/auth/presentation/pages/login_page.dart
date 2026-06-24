@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillhub/core/localization/app_localizations.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/features/admin/presentation/pages/admin_dashboard_page.dart';
 import 'package:skillhub/features/auth/presentation/widgets/login_card.dart';
@@ -32,6 +33,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _apiClient = ApiClient();
+  final _sessionService = SessionService();
 
   bool _rememberMe = true;
   bool _obscurePassword = true;
@@ -108,9 +110,9 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await _apiClient.login(email, password);
+      final loginData = await _apiClient.login(email, password);
       if (!mounted) return;
-      await _saveSession(isAdminLogin: isAdminLogin);
+      await _saveSession(isAdminLogin: isAdminLogin, loginData: loginData);
       _openDestination(isAdminLogin: isAdminLogin, connectedToApi: true);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -129,7 +131,10 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _saveSession({required bool isAdminLogin}) async {
+  Future<void> _saveSession({
+    required bool isAdminLogin,
+    Map<String, dynamic>? loginData,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rememberPreferenceKey, _rememberMe);
 
@@ -146,6 +151,18 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setBool(_sessionRememberedKey, true);
     await prefs.setBool(_sessionIsAdminKey, isAdminLogin);
     await prefs.setInt(_sessionExpiresAtKey, expiresAt.millisecondsSinceEpoch);
+
+    final token = loginData?['token']?.toString();
+    final user = loginData?['user'];
+    if (token != null && user is Map<String, dynamic>) {
+      await _sessionService.saveOnlineSession(
+        accessToken: token,
+        userId: user['id']?.toString() ?? user['email']?.toString() ?? '',
+        email: user['email']?.toString() ?? '',
+        role: user['role']?.toString() ?? (isAdminLogin ? 'admin' : 'user'),
+        localSessionExpiresAt: expiresAt,
+      );
+    }
   }
 
   Future<void> _clearSession() async {
@@ -154,6 +171,7 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.remove(_sessionRememberedKey);
     await prefs.remove(_sessionIsAdminKey);
     await prefs.remove(_sessionCloseNoticeKey);
+    await _sessionService.clearCurrentAccount();
     await _apiClient.clearToken();
   }
 

@@ -1,10 +1,13 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show OrderingMode, OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:skillhub/core/local/app_database.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
@@ -30,6 +33,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   ];
 
   final _apiClient = ApiClient();
+  final _database = AppDatabase.instance;
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -55,7 +59,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Future<List<_AdminUser>> _loadUsers() async {
-    final localUsers = await _loadLocalUsers();
+    final cachedUsers = await _loadCachedUsers();
 
     try {
       final response = await _apiClient.get('/users') as List<dynamic>;
@@ -65,14 +69,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           .where((user) => user.role != 'admin')
           .toList();
 
+      await _saveCachedUsers(apiUsers);
       _usingLocalUsers = false;
-      return _mergeUsers(apiUsers, localUsers);
+      return apiUsers;
     } on ApiException {
       _usingLocalUsers = true;
-      return localUsers;
+      return cachedUsers;
     }
   }
 
+  // ignore: unused_element
   Future<List<_AdminUser>> _loadLocalUsers() async {
     final prefs = await SharedPreferences.getInstance();
     final rawUsers = prefs.getStringList(_localUsersKey) ?? const [];
@@ -83,15 +89,48 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         .toList();
   }
 
-  Future<void> _saveLocalUser(_AdminUser user) async {
-    final users = _mergeUsers(await _loadLocalUsers(), [user]);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _localUsersKey,
-      users.map((item) => jsonEncode(item.toJson())).toList(),
-    );
+  Future<List<_AdminUser>> _loadCachedUsers() async {
+    final rows =
+        await (_database.select(_database.adminUsersCache)..orderBy([
+              (table) => OrderingTerm(
+                expression: table.cachedAt,
+                mode: OrderingMode.desc,
+              ),
+            ]))
+            .get();
+    return rows
+        .map((row) => jsonDecode(row.payloadJson))
+        .whereType<Map<String, dynamic>>()
+        .map((json) => _AdminUser.fromJson(json, source: 'cache'))
+        .toList();
   }
 
+  Future<void> _saveCachedUsers(List<_AdminUser> users) async {
+    final now = DateTime.now();
+    await _database.transaction(() async {
+      await _database.delete(_database.adminUsersCache).go();
+      for (final user in users) {
+        await _database
+            .into(_database.adminUsersCache)
+            .insert(
+              AdminUsersCacheCompanion.insert(
+                id: user.id,
+                adminUserId: user.id,
+                email: user.email,
+                payloadJson: jsonEncode(user.toJson()),
+                cachedAt: now,
+              ),
+            );
+      }
+    });
+  }
+
+  void _showOnlineRequired() {
+    if (!mounted) return;
+    SnackbarUtils.showError(context, 'هذه العملية تحتاج اتصال بالإنترنت');
+  }
+
+  // ignore: unused_element
   List<_AdminUser> _mergeUsers(
     List<_AdminUser> first,
     List<_AdminUser> second,
@@ -107,6 +146,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _createUser() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+    if (_usingLocalUsers) {
+      _showOnlineRequired();
       return;
     }
 
@@ -129,6 +172,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       _isCreating = true;
     });
 
+    var created = false;
     try {
       await _apiClient.post('/users', {
         'name': user.name,
@@ -137,35 +181,40 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         'role': user.role,
         'activationPlan': user.activationPlan,
       });
-    } on ApiException {
-      await _saveLocalUser(user);
+      created = true;
+    } on ApiException catch (error) {
+      if (error.statusCode != null) {
+        if (mounted) {
+          SnackbarUtils.showError(context, error.message);
+        }
+        return;
+      }
+      _showOnlineRequired();
+      return;
     } finally {
       if (mounted) {
-        _nameController.clear();
-        _emailController.clear();
-        _passwordController.clear();
-        _activationPlan = 'monthly';
-        SnackbarUtils.showSuccess(context, 'تم إنشاء حساب العميل');
         setState(() {
           _isCreating = false;
-          _usersFuture = _loadUsers();
+          if (created) {
+            _nameController.clear();
+            _emailController.clear();
+            _passwordController.clear();
+            _activationPlan = 'monthly';
+            _usersFuture = _loadUsers();
+          }
         });
+        if (created) {
+          SnackbarUtils.showSuccess(context, 'تم إنشاء حساب العميل');
+        }
       }
     }
   }
 
-  Future<void> _deleteLocalUser(_AdminUser user) async {
-    final users = (await _loadLocalUsers())
-        .where((item) => item.email.toLowerCase() != user.email.toLowerCase())
-        .toList();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _localUsersKey,
-      users.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-  }
-
   Future<void> _deleteUser(_AdminUser user) async {
+    if (_usingLocalUsers) {
+      _showOnlineRequired();
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -192,11 +241,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
 
     try {
-      if (user.isLocal) {
-        await _deleteLocalUser(user);
-      } else {
-        await _apiClient.delete('/users/${user.id}');
-      }
+      await _apiClient.delete('/users/${user.id}');
       if (!mounted) return;
       SnackbarUtils.showSuccess(context, 'تم حذف الحساب');
       setState(() {
@@ -244,6 +289,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     for (final key in _sessionKeys) {
       await prefs.remove(key);
     }
+    await SessionService().clearCurrentAccount();
     await _apiClient.clearToken();
 
     if (!mounted) {
@@ -305,6 +351,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   _AdminHeader(
                     connectedToApi: widget.connectedToApi && !_usingLocalUsers,
                   ),
+                  if (_usingLocalUsers) ...[
+                    const SizedBox(height: 10),
+                    const AppSurfaceCard(
+                      child: Text(
+                        'وضع عرض فقط. عمليات الإدارة تحتاج اتصال بالإنترنت',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   _CreateUserCard(
                     formKey: _formKey,
@@ -318,6 +374,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       });
                     },
                     isCreating: _isCreating,
+                    isReadOnly: _usingLocalUsers,
                     onCreate: _createUser,
                   ),
                   const SizedBox(height: 16),
@@ -329,6 +386,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   else
                     _UsersCard(
                       users: users,
+                      isReadOnly: _usingLocalUsers,
                       onUserTap: _openUserOverview,
                       onUserDelete: _deleteUser,
                     ),
@@ -427,9 +485,9 @@ class _AdminUserOverviewPage extends StatelessWidget {
             _OverviewRow(
               icon: Iconsax.calendar_tick,
               label: 'نهاية التفعيل',
-              value: user.activationEndsAt == null
+              value: user.effectiveActivationEndsAt == null
                   ? 'دائم'
-                  : _formatDate(user.activationEndsAt!),
+                  : _formatDate(user.effectiveActivationEndsAt!),
             ),
             const SizedBox(height: 10),
             _OverviewRow(
@@ -527,6 +585,7 @@ class _CreateUserCard extends StatelessWidget {
     required this.activationPlan,
     required this.onActivationPlanChanged,
     required this.isCreating,
+    required this.isReadOnly,
     required this.onCreate,
   });
 
@@ -537,6 +596,7 @@ class _CreateUserCard extends StatelessWidget {
   final String activationPlan;
   final ValueChanged<String> onActivationPlanChanged;
   final bool isCreating;
+  final bool isReadOnly;
   final VoidCallback onCreate;
 
   @override
@@ -615,17 +675,19 @@ class _CreateUserCard extends StatelessWidget {
                 DropdownMenuItem(value: 'yearly', child: Text('سنوي')),
                 DropdownMenuItem(value: 'permanent', child: Text('دائم')),
               ],
-              onChanged: (value) {
-                if (value != null) {
-                  onActivationPlanChanged(value);
-                }
-              },
+              onChanged: isReadOnly
+                  ? null
+                  : (value) {
+                      if (value != null) {
+                        onActivationPlanChanged(value);
+                      }
+                    },
             ),
             const SizedBox(height: 16),
             SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: isCreating ? null : onCreate,
+                onPressed: isCreating || isReadOnly ? null : onCreate,
                 icon: isCreating
                     ? const SizedBox(
                         width: 18,
@@ -649,11 +711,13 @@ class _CreateUserCard extends StatelessWidget {
 class _UsersCard extends StatelessWidget {
   const _UsersCard({
     required this.users,
+    required this.isReadOnly,
     required this.onUserTap,
     required this.onUserDelete,
   });
 
   final List<_AdminUser> users;
+  final bool isReadOnly;
   final ValueChanged<_AdminUser> onUserTap;
   final ValueChanged<_AdminUser> onUserDelete;
 
@@ -707,7 +771,7 @@ class _UsersCard extends StatelessWidget {
                   children: [
                     IconButton(
                       tooltip: 'حذف الحساب',
-                      onPressed: () => onUserDelete(user),
+                      onPressed: isReadOnly ? null : () => onUserDelete(user),
                       icon: const Icon(
                         Iconsax.trash,
                         color: AppColors.red,
@@ -850,6 +914,24 @@ class _AdminUser {
       'yearly' => 'سنوي',
       'permanent' => 'دائم',
       _ => 'شهري',
+    };
+  }
+
+  DateTime? get effectiveActivationEndsAt {
+    if (activationEndsAt != null || activationPlan == 'permanent') {
+      return activationEndsAt;
+    }
+    return switch (activationPlan) {
+      'yearly' => DateTime(
+        activationStartsAt.year + 1,
+        activationStartsAt.month,
+        activationStartsAt.day,
+      ),
+      _ => DateTime(
+        activationStartsAt.year,
+        activationStartsAt.month + 1,
+        activationStartsAt.day,
+      ),
     };
   }
 

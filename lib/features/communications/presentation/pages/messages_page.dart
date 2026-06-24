@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
-import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/features/communications/data/messages_repository.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 
 class MessagesPage extends StatefulWidget {
@@ -19,7 +20,9 @@ class MessagesPage extends StatefulWidget {
 }
 
 class _MessagesPageState extends State<MessagesPage> {
-  final _apiClient = ApiClient();
+  final _repository = MessagesRepository();
+  final _sessionService = SessionService();
+  final _syncService = SyncService();
   late final TextEditingController _messageController;
   String _channel = 'whatsapp';
   bool _schedule = false;
@@ -44,6 +47,7 @@ class _MessagesPageState extends State<MessagesPage> {
       text: _templates[widget.initialTemplate] ?? '',
     );
     _historyFuture = _loadHistory();
+    _syncInBackground();
   }
 
   @override
@@ -53,12 +57,24 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   Future<List<_MessageHistoryItem>> _loadHistory() async {
-    final response = await _apiClient.get('/messages');
-    final items = response is List<dynamic> ? response : const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(_MessageHistoryItem.fromJson)
-        .toList(growable: false);
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) {
+      return const [];
+    }
+    final items = await _repository.listMessages(session);
+    return items.map(_MessageHistoryItem.fromJson).toList(growable: false);
+  }
+
+  Future<void> _syncInBackground() async {
+    try {
+      await _syncService.syncNow();
+      if (!mounted) return;
+      setState(() {
+        _historyFuture = _loadHistory();
+      });
+    } catch (_) {
+      // Offline-first: local messages remain available.
+    }
   }
 
   Future<void> _send() async {
@@ -75,7 +91,13 @@ class _MessagesPageState extends State<MessagesPage> {
 
     setState(() => _isSending = true);
     try {
-      await _apiClient.post('/messages', {
+      final session = await _sessionService.readLastSession();
+      if (session == null || session.isExpired) {
+        throw Exception(
+          'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
+        );
+      }
+      await _repository.createMessage(session, widget.player, {
         'playerId': widget.player?.id,
         'recipient': recipient,
         'channel': _channel,
@@ -92,11 +114,11 @@ class _MessagesPageState extends State<MessagesPage> {
       setState(() {
         _historyFuture = _loadHistory();
       });
-    } on ApiException catch (error) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.message, textAlign: TextAlign.center),
+          content: Text(error.toString(), textAlign: TextAlign.center),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Theme.of(context).colorScheme.error,
         ),

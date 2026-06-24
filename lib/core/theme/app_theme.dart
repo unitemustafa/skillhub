@@ -97,12 +97,13 @@ abstract final class AppTheme {
   }
 
   static ThemeData get darkTheme {
-    const background = Color(0xFF000000);
-    const surface = Color(0xFF090B10);
-    const surfaceHigh = Color(0xFF11141B);
-    const borderColor = Color(0xFF242938);
-    const textPrimary = Color(0xFFF4F7FB);
-    const textSecondary = Color(0xFFB7C0CE);
+    const background = Color(0xFF121827);
+    const surface = Color(0xFF192235);
+    const surfaceHigh = Color(0xFF22304A);
+    const borderColor = Color(0xFF34425E);
+    const textPrimary = Color(0xFFF3F6FF);
+    const textSecondary = Color(0xFFC3CCE0);
+    const mutedText = Color(0xFF8F9BB4);
 
     final baseTheme = ThemeData.dark();
     final textTheme = GoogleFonts.cairoTextTheme(baseTheme.textTheme).apply(
@@ -121,11 +122,12 @@ abstract final class AppTheme {
       textTheme: textTheme,
       scaffoldBackgroundColor: background,
       colorScheme: const ColorScheme.dark(
-        primary: AppColors.accentBlue,
+        primary: AppColors.accentBlueLight,
         secondary: AppColors.greenBright,
         surface: surface,
         surfaceContainerHighest: surfaceHigh,
         onSurface: textPrimary,
+        onSurfaceVariant: textSecondary,
         outline: borderColor,
       ),
       cardColor: surface,
@@ -172,7 +174,7 @@ abstract final class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surfaceHigh,
-        hintStyle: const TextStyle(color: textSecondary),
+        hintStyle: const TextStyle(color: mutedText),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,

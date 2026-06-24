@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/features/evaluations/data/evaluations_repository.dart';
 import 'package:skillhub/features/evaluations/domain/models/evaluation_record.dart';
 import 'package:skillhub/features/evaluations/presentation/pages/evaluation_details_page.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
@@ -20,7 +22,9 @@ class EvaluationsPage extends StatefulWidget {
 }
 
 class _EvaluationsPageState extends State<EvaluationsPage> {
-  final _apiClient = ApiClient();
+  final _repository = EvaluationsRepository();
+  final _sessionService = SessionService();
+  final _syncService = SyncService();
   final _searchController = TextEditingController();
   String _period = 'الكل';
   String _query = '';
@@ -32,18 +36,30 @@ class _EvaluationsPageState extends State<EvaluationsPage> {
   void initState() {
     super.initState();
     _recordsFuture = _loadRecords();
+    _syncInBackground();
   }
 
   Future<List<EvaluationRecord>> _loadRecords() async {
-    final response = await _apiClient.get(
-      '/evaluations',
-      query: _isPlayerScope ? {'playerId': widget.player!.id} : null,
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) {
+      return const [];
+    }
+    return _repository.listEvaluations(
+      session,
+      playerId: _isPlayerScope ? widget.player!.id : null,
     );
-    final items = response is List<dynamic> ? response : const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(EvaluationRecord.fromJson)
-        .toList(growable: false);
+  }
+
+  Future<void> _syncInBackground() async {
+    try {
+      await _syncService.syncNow();
+      if (!mounted) return;
+      setState(() {
+        _recordsFuture = _loadRecords();
+      });
+    } catch (_) {
+      // Offline-first: local evaluations remain available.
+    }
   }
 
   List<EvaluationRecord> _visibleRecords(List<EvaluationRecord> records) {

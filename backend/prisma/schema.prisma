@@ -27,6 +27,29 @@ model User {
   notifications       Notification[]
 }
 
+model BlockedUserEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(cuid())
+  key          String
+  ownerId      String
+  route        String
+  statusCode   Int      @default(200)
+  responseJson Json
+  createdAt    DateTime @default(now())
+
+  @@unique([ownerId, key])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
 model Player {
   id               String         @id
   name             String

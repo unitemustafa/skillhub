@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 import 'package:skillhub/features/players/presentation/pages/new_subscription_page.dart';
+import 'package:skillhub/features/subscriptions/data/subscriptions_repository.dart';
 
 class SubscriptionsPage extends StatefulWidget {
   const SubscriptionsPage({super.key, this.showBackButton = true});
@@ -18,7 +20,9 @@ class SubscriptionsPage extends StatefulWidget {
 }
 
 class _SubscriptionsPageState extends State<SubscriptionsPage> {
-  final _apiClient = ApiClient();
+  final _repository = SubscriptionsRepository();
+  final _sessionService = SessionService();
+  final _syncService = SyncService();
   String _filter = 'الكل';
   String _query = '';
   late Future<List<_SubscriptionItem>> _subscriptionsFuture;
@@ -27,15 +31,28 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   void initState() {
     super.initState();
     _subscriptionsFuture = _loadSubscriptions();
+    _syncInBackground();
   }
 
   Future<List<_SubscriptionItem>> _loadSubscriptions() async {
-    final response = await _apiClient.get('/subscriptions');
-    final items = response is List<dynamic> ? response : const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(_SubscriptionItem.fromJson)
-        .toList(growable: false);
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) {
+      return const [];
+    }
+    final items = await _repository.listSubscriptions(session);
+    return items.map(_SubscriptionItem.fromJson).toList(growable: false);
+  }
+
+  Future<void> _syncInBackground() async {
+    try {
+      await _syncService.syncNow();
+      if (!mounted) return;
+      setState(() {
+        _subscriptionsFuture = _loadSubscriptions();
+      });
+    } catch (_) {
+      // Offline-first: local subscriptions remain available.
+    }
   }
 
   List<_SubscriptionItem> _visibleItems(List<_SubscriptionItem> items) {

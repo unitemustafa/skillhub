@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/features/notifications/data/notifications_repository.dart';
 
 class NotificationItem {
   const NotificationItem({
@@ -49,7 +51,9 @@ class NotificationsPage extends StatefulWidget {
 }
 
 class _NotificationsPageState extends State<NotificationsPage> {
-  final _apiClient = ApiClient();
+  final _repository = NotificationsRepository();
+  final _sessionService = SessionService();
+  final _syncService = SyncService();
   final Set<String> _dismissedNotificationIds = <String>{};
   late Future<List<NotificationItem>> _notificationsFuture;
 
@@ -57,19 +61,34 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void initState() {
     super.initState();
     _notificationsFuture = _loadNotifications();
+    _syncInBackground();
   }
 
   Future<List<NotificationItem>> _loadNotifications() async {
-    final response = await _apiClient.get('/notifications');
-    final items = response is List<dynamic> ? response : const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(NotificationItem.fromJson)
-        .toList(growable: false);
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) {
+      return const [];
+    }
+    final items = await _repository.listNotifications(session);
+    return items.map(NotificationItem.fromJson).toList(growable: false);
+  }
+
+  Future<void> _syncInBackground() async {
+    try {
+      await _syncService.syncNow();
+      if (!mounted) return;
+      setState(() {
+        _notificationsFuture = _loadNotifications();
+      });
+    } catch (_) {
+      // Offline-first: local notifications remain available.
+    }
   }
 
   Future<void> _markAllAsRead() async {
-    await _apiClient.patch('/notifications/read-all');
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) return;
+    await _repository.markAllAsRead(session);
     setState(() {
       _notificationsFuture = _loadNotifications();
     });
@@ -79,14 +98,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (item.isRead) {
       return;
     }
-    await _apiClient.patch('/notifications/${item.id}/read');
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) return;
+    await _repository.markAsRead(session, item.id);
     setState(() {
       _notificationsFuture = _loadNotifications();
     });
   }
 
   Future<void> _deleteNotification(NotificationItem item) async {
-    await _apiClient.delete('/notifications/${item.id}');
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) return;
+    await _repository.deleteNotification(session, item.id);
     setState(() {
       _dismissedNotificationIds.add(item.id);
       _notificationsFuture = _loadNotifications();

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
-import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/features/evaluations/data/evaluations_repository.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
 
 class NewEvaluationPage extends StatefulWidget {
@@ -17,7 +17,8 @@ class NewEvaluationPage extends StatefulWidget {
 }
 
 class _NewEvaluationPageState extends State<NewEvaluationPage> {
-  final _apiClient = ApiClient();
+  final _repository = EvaluationsRepository();
+  final _sessionService = SessionService();
   final _coachController = TextEditingController(text: 'كابتن محمد');
   final _notesController = TextEditingController();
   final Map<String, double> _scores = {
@@ -62,7 +63,13 @@ class _NewEvaluationPageState extends State<NewEvaluationPage> {
 
     setState(() => _isSaving = true);
     try {
-      await _apiClient.post('/evaluations', {
+      final session = await _sessionService.readLastSession();
+      if (session == null || session.isExpired) {
+        throw Exception(
+          'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
+        );
+      }
+      await _repository.createEvaluation(session, widget.player, {
         'playerId': widget.player.id,
         'coach': _coachController.text.trim(),
         'evaluationDate': _evaluationDate.toIso8601String(),
@@ -74,12 +81,21 @@ class _NewEvaluationPageState extends State<NewEvaluationPage> {
         'notes': _notesController.text.trim(),
       });
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تم الحفظ محليًا وسيتم المزامنة عند رجوع الإنترنت',
+            textAlign: TextAlign.center,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       Navigator.pop(context, true);
-    } on ApiException catch (error) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.message, textAlign: TextAlign.center),
+          content: Text(error.toString(), textAlign: TextAlign.center),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Theme.of(context).colorScheme.error,
         ),

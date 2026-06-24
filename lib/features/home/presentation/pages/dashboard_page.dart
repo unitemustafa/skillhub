@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:skillhub/core/local/app_database.dart';
 import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
 import 'package:skillhub/core/localization/app_localizations.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 
 import 'package:skillhub/core/widgets/app_section_header.dart';
@@ -84,10 +86,96 @@ class _DashboardHome extends StatelessWidget {
   final ValueChanged<int> onTabSelected;
 
   final _apiClient = ApiClient();
+  final _database = AppDatabase.instance;
+  final _sessionService = SessionService();
 
   Future<DashboardStats> _loadStats() async {
+    final session = await _sessionService.readLastSession();
+    if (session != null) {
+      try {
+        return await _loadLocalStats(session);
+      } catch (_) {
+        // Fall through to the API if the local cache is not ready yet.
+      }
+    }
+
     final response = await _apiClient.get('/dashboard');
     return DashboardStats.fromJson(response as Map<String, dynamic>);
+  }
+
+  Future<DashboardStats> _loadLocalStats(LocalSession session) async {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month);
+    final nextMonthStart = DateTime(now.year, now.month + 1);
+
+    final players =
+        await (_database.select(_database.localPlayers)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull()))
+            .get();
+    final subscriptions =
+        await (_database.select(_database.localSubscriptions)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull()))
+            .get();
+    final evaluations =
+        await (_database.select(_database.localEvaluations)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull()))
+            .get();
+    final transactions =
+        await (_database.select(_database.localFinanceTransactions)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull()))
+            .get();
+    final notifications =
+        await (_database.select(_database.localNotifications)
+              ..where((table) => table.userId.equals(session.userId))
+              ..where((table) => table.deletedAt.isNull()))
+            .get();
+
+    final activeSubscriptions = subscriptions
+        .where((subscription) => subscription.endDate.isAfter(now))
+        .length;
+    final expiringSubscriptions = subscriptions
+        .where(
+          (subscription) =>
+              subscription.endDate.isAfter(now) &&
+              subscription.endDate.difference(now).inDays <= 7,
+        )
+        .length;
+    final monthlyEvaluations = evaluations
+        .where(
+          (evaluation) =>
+              !evaluation.evaluationDate.isBefore(monthStart) &&
+              evaluation.evaluationDate.isBefore(nextMonthStart),
+        )
+        .length;
+    final monthlyTransactions = transactions.where(
+      (transaction) =>
+          !transaction.occurredAt.isBefore(monthStart) &&
+          transaction.occurredAt.isBefore(nextMonthStart),
+    );
+    final income = monthlyTransactions
+        .where((transaction) => transaction.type == 'income')
+        .fold<double>(0, (sum, transaction) => sum + transaction.amount);
+    final expenses = monthlyTransactions
+        .where((transaction) => transaction.type == 'expense')
+        .fold<double>(0, (sum, transaction) => sum + transaction.amount);
+
+    return DashboardStats(
+      players: players.length,
+      activePlayers: players.where((player) => player.isActive).length,
+      activeSubscriptions: activeSubscriptions,
+      expiringSubscriptions: expiringSubscriptions,
+      evaluations: monthlyEvaluations,
+      income: income,
+      expenses: expenses,
+      balance: income - expenses,
+      unreadNotifications: notifications
+          .where((notification) => !notification.isRead)
+          .length,
+    );
   }
 
   @override

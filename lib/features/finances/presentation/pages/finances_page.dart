@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
 import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
+import 'package:skillhub/core/sync/sync_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
-import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/utils/snackbar_utils.dart';
+import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
+import 'package:skillhub/features/finances/data/finance_repository.dart';
 
 class FinancesPage extends StatefulWidget {
   const FinancesPage({super.key});
@@ -15,7 +17,9 @@ class FinancesPage extends StatefulWidget {
 }
 
 class _FinancesPageState extends State<FinancesPage> {
-  final _apiClient = ApiClient();
+  final _repository = FinanceRepository();
+  final _sessionService = SessionService();
+  final _syncService = SyncService();
   final _searchController = TextEditingController();
   String _filter = 'الكل';
   String _period = 'هذا الشهر';
@@ -26,15 +30,28 @@ class _FinancesPageState extends State<FinancesPage> {
   void initState() {
     super.initState();
     _transactionsFuture = _loadTransactions();
+    _syncInBackground();
   }
 
   Future<List<_Transaction>> _loadTransactions() async {
-    final response = await _apiClient.get('/finance/transactions');
-    final items = response is List<dynamic> ? response : const [];
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(_Transaction.fromJson)
-        .toList(growable: false);
+    final session = await _sessionService.readLastSession();
+    if (session == null || session.isExpired) {
+      return const [];
+    }
+    final items = await _repository.listTransactions(session);
+    return items.map(_Transaction.fromJson).toList(growable: false);
+  }
+
+  Future<void> _syncInBackground() async {
+    try {
+      await _syncService.syncNow();
+      if (!mounted) return;
+      setState(() {
+        _transactionsFuture = _loadTransactions();
+      });
+    } catch (_) {
+      // Offline-first: local finance transactions remain available.
+    }
   }
 
   List<_Transaction> _visibleTransactions(List<_Transaction> transactions) {
@@ -367,11 +384,18 @@ class _FinancesPageState extends State<FinancesPage> {
                   ElevatedButton(
                     onPressed: () async {
                       try {
-                        await _apiClient.post('/finance/transactions', {
+                        final session = await _sessionService.readLastSession();
+                        if (session == null || session.isExpired) {
+                          throw Exception(
+                            'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
+                          );
+                        }
+                        await _repository.createTransaction(session, {
                           'type': type,
                           'category': type == 'income' ? 'manual' : 'expense',
                           'amount': amountController.text.trim(),
                           'description': descriptionController.text.trim(),
+                          'occurredAt': DateTime.now().toIso8601String(),
                         });
                         if (!sheetContext.mounted || !pageContext.mounted) {
                           return;
@@ -384,12 +408,12 @@ class _FinancesPageState extends State<FinancesPage> {
                         setState(() {
                           _transactionsFuture = _loadTransactions();
                         });
-                      } on ApiException catch (error) {
+                      } catch (error) {
                         if (!pageContext.mounted) return;
                         ScaffoldMessenger.of(pageContext).showSnackBar(
                           SnackBar(
                             content: Text(
-                              error.message,
+                              error.toString(),
                               textAlign: TextAlign.center,
                             ),
                             behavior: SnackBarBehavior.floating,

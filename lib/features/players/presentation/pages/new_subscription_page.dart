@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
-import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
+import 'package:skillhub/features/subscriptions/data/subscriptions_repository.dart';
 
 class NewSubscriptionPage extends StatefulWidget {
   const NewSubscriptionPage({super.key, required this.player});
@@ -16,7 +16,8 @@ class NewSubscriptionPage extends StatefulWidget {
 }
 
 class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
-  final _apiClient = ApiClient();
+  final _repository = SubscriptionsRepository();
+  final _sessionService = SessionService();
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
@@ -59,7 +60,13 @@ class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
     if (!(_formKey.currentState?.validate() ?? false) || _isSaving) return;
     setState(() => _isSaving = true);
     try {
-      await _apiClient.post('/subscriptions', {
+      final session = await _sessionService.readLastSession();
+      if (session == null || session.isExpired) {
+        throw Exception(
+          'يلزم تسجيل الدخول عبر الإنترنت أولًا قبل استخدام الوضع المحلي.',
+        );
+      }
+      await _repository.createSubscription(session, widget.player, {
         'playerId': widget.player.id,
         'amount': _amountController.text.trim(),
         'startDate': _startDate.toIso8601String(),
@@ -69,12 +76,21 @@ class _NewSubscriptionPageState extends State<NewSubscriptionPage> {
             : _notesController.text.trim(),
       });
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تم الحفظ محليًا وسيتم المزامنة عند رجوع الإنترنت',
+            textAlign: TextAlign.center,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       Navigator.pop(context, true);
-    } on ApiException catch (error) {
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.message, textAlign: TextAlign.center),
+          content: Text(error.toString(), textAlign: TextAlign.center),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Theme.of(context).colorScheme.error,
         ),

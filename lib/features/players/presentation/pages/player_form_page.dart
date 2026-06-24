@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:skillhub/core/network/api_client.dart';
-import 'package:skillhub/core/network/api_exception.dart';
+import 'package:skillhub/core/sync/session_service.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_back_button.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
 import 'package:skillhub/features/players/domain/models/player_summary.dart';
+import 'package:skillhub/features/players/data/players_repository.dart';
 
 class PlayerFormPage extends StatefulWidget {
   const PlayerFormPage({super.key, this.player});
@@ -17,7 +18,8 @@ class PlayerFormPage extends StatefulWidget {
 }
 
 class _PlayerFormPageState extends State<PlayerFormPage> {
-  final _apiClient = ApiClient();
+  final _playersRepository = PlayersRepository();
+  final _sessionService = SessionService();
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _phoneController;
@@ -80,22 +82,29 @@ class _PlayerFormPageState extends State<PlayerFormPage> {
     };
 
     try {
+      final session = await _sessionService.readLastSession();
+      if (session == null) {
+        if (!mounted) return;
+        SnackbarUtils.showError(
+          context,
+          'يلزم تسجيل الدخول عبر الإنترنت أولًا.',
+        );
+        return;
+      }
       if (_isEditing) {
-        await _apiClient.put('/players/${widget.player!.id}', body);
+        await _playersRepository.updatePlayer(session, widget.player!, body);
       } else {
-        await _apiClient.post('/players', body);
+        await _playersRepository.createPlayer(session, body);
       }
       if (!mounted) return;
-      Navigator.pop(context, true);
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message, textAlign: TextAlign.center),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      SnackbarUtils.showSuccess(
+        context,
+        'تم الحفظ محليًا وسيتم المزامنة عند رجوع الإنترنت',
       );
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      SnackbarUtils.showError(context, error.toString());
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);

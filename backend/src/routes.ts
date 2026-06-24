@@ -1,4 +1,4 @@
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db.js";
@@ -18,6 +18,7 @@ export const api = Router();
 
 const currentUserId = (res: Response) => res.locals.user.sub as string;
 const primaryAdminEmail = "mustafa@admin.com";
+const expiredAccountReason = "activation_expired";
 
 const requireAdmin = (role: string) => {
   if (role !== "admin") {
@@ -75,11 +76,101 @@ const createOwnedPlayer = async (
   throw new AppError(409, "تعذر إنشاء رقم جديد للاعب");
 };
 
-const activationEndsAt = (plan: "monthly" | "yearly" | "permanent") => {
+const activationEndsAt = (
+  plan: "monthly" | "yearly" | "permanent",
+  startsAt = new Date(),
+) => {
   if (plan === "permanent") return null;
-  const date = new Date();
+  const date = new Date(startsAt);
   date.setMonth(date.getMonth() + (plan === "monthly" ? 1 : 12));
   return date;
+};
+
+const effectiveActivationEndsAt = (user: {
+  activationPlan: string;
+  activationStartsAt: Date;
+  activationEndsAt: Date | null;
+}) => {
+  if (user.activationEndsAt !== null || user.activationPlan === "permanent") {
+    return user.activationEndsAt;
+  }
+  if (user.activationPlan === "monthly" || user.activationPlan === "yearly") {
+    return activationEndsAt(user.activationPlan, user.activationStartsAt);
+  }
+  return null;
+};
+
+const isActivationExpired = (user: {
+  email: string;
+  activationPlan: string;
+  activationStartsAt: Date;
+  activationEndsAt: Date | null;
+}) =>
+  user.email !== primaryAdminEmail &&
+  effectiveActivationEndsAt(user) !== null &&
+  effectiveActivationEndsAt(user)! <= new Date();
+
+const blockAndDeleteExpiredUser = async (user: {
+  id: string;
+  email: string;
+}) => {
+  await prisma.$transaction([
+    prisma.blockedUserEmail.upsert({
+      where: { email: user.email.toLowerCase() },
+      update: { reason: expiredAccountReason },
+      create: {
+        email: user.email.toLowerCase(),
+        reason: expiredAccountReason,
+      },
+    }),
+    prisma.user.delete({ where: { id: user.id } }),
+  ]);
+};
+
+const deleteExpiredUsers = async () => {
+  const expiredUsers = await prisma.user.findMany({
+    where: {
+      email: { not: primaryAdminEmail },
+      activationPlan: { not: "permanent" },
+    },
+    select: {
+      id: true,
+      email: true,
+      activationPlan: true,
+      activationStartsAt: true,
+      activationEndsAt: true,
+    },
+  });
+
+  const now = new Date();
+  const usersToDelete = expiredUsers.filter((user) => {
+    const endsAt = effectiveActivationEndsAt(user);
+    return endsAt !== null && endsAt <= now;
+  });
+
+  for (const user of usersToDelete) {
+    await blockAndDeleteExpiredUser(user);
+  }
+
+  return usersToDelete.length;
+};
+
+const ensureCurrentUserIsActive = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      activationPlan: true,
+      activationStartsAt: true,
+      activationEndsAt: true,
+    },
+  });
+  if (!user) throw new AppError(404, "الحساب غير موجود");
+  if (isActivationExpired(user)) {
+    await blockAndDeleteExpiredUser(user);
+    throw new AppError(403, "انتهى تفعيل الحساب وتم حذفه");
+  }
 };
 
 const userStats = async (ownerId: string) => {
@@ -128,6 +219,51 @@ const userSelect = {
   createdAt: true,
 } as const;
 
+const jsonSafe = (value: unknown) =>
+  JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+
+const sendIdempotent = async (
+  req: Request,
+  res: Response,
+  ownerId: string,
+  handler: () => Promise<{ statusCode: number; body: unknown }>,
+) => {
+  const key = req.header("Idempotency-Key")?.trim();
+  if (!key) {
+    const result = await handler();
+    return res.status(result.statusCode).json(result.body);
+  }
+
+  const existing = await prisma.idempotencyRecord.findUnique({
+    where: { ownerId_key: { ownerId, key } },
+  });
+  if (existing) {
+    return res.status(existing.statusCode).json(existing.responseJson);
+  }
+
+  const result = await handler();
+  const responseJson = jsonSafe(result.body);
+  try {
+    await prisma.idempotencyRecord.create({
+      data: {
+        key,
+        ownerId,
+        route: req.path,
+        statusCode: result.statusCode,
+        responseJson,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConflict(error)) throw error;
+    const stored = await prisma.idempotencyRecord.findUnique({
+      where: { ownerId_key: { ownerId, key } },
+    });
+    if (stored) return res.status(stored.statusCode).json(stored.responseJson);
+  }
+
+  return res.status(result.statusCode).json(result.body);
+};
+
 api.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "skillhub-api" });
 });
@@ -142,6 +278,11 @@ api.post("/auth/login", async (req, res) => {
     throw new AppError(401, "البريد الإلكتروني أو كلمة المرور غير صحيحة");
   }
 
+  if (isActivationExpired(user)) {
+    await blockAndDeleteExpiredUser(user);
+    throw new AppError(403, "انتهى تفعيل الحساب وتم حذفه");
+  }
+
   const token = signToken({ sub: user.id, email: user.email, role: user.role });
   res.json({
     token,
@@ -150,6 +291,15 @@ api.post("/auth/login", async (req, res) => {
 });
 
 api.use(requireAuth);
+
+api.use(async (_req, res, next) => {
+  try {
+    await ensureCurrentUserIsActive(currentUserId(res));
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 api.get("/auth/me", async (_req, res) => {
   const user = await prisma.user.findUnique({
@@ -160,8 +310,61 @@ api.get("/auth/me", async (_req, res) => {
   res.json(user);
 });
 
+api.get("/sync/snapshot", async (_req, res) => {
+  const ownerId = currentUserId(res);
+  const [
+    players,
+    subscriptions,
+    evaluations,
+    financeTransactions,
+    messages,
+    notifications,
+  ] = await prisma.$transaction([
+    prisma.player.findMany({
+      where: { ownerId },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.subscription.findMany({
+      where: { ownerId },
+      include: { player: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.evaluation.findMany({
+      where: { ownerId },
+      include: { player: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.financeTransaction.findMany({
+      where: { ownerId },
+      orderBy: { occurredAt: "desc" },
+    }),
+    prisma.message.findMany({
+      where: { ownerId },
+      include: { player: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.notification.findMany({
+      where: { ownerId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]);
+  const serverTime = new Date();
+  res.json({
+    players,
+    subscriptions,
+    evaluations,
+    financeTransactions,
+    messages,
+    notifications,
+    snapshotGeneratedAt: serverTime,
+    serverTime,
+  });
+});
+
 api.get("/users", async (_req, res) => {
   requireAdmin(res.locals.user.role);
+  await deleteExpiredUsers();
   const users = await prisma.user.findMany({
     select: userSelect,
     orderBy: { createdAt: "desc" },
@@ -178,6 +381,7 @@ api.get("/users", async (_req, res) => {
 
 api.get("/users/:id", async (req, res) => {
   requireAdmin(res.locals.user.role);
+  await deleteExpiredUsers();
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     select: userSelect,
@@ -212,9 +416,20 @@ api.delete("/users", async (_req, res) => {
 api.post("/users", async (req, res) => {
   requireAdmin(res.locals.user.role);
   const input = userSchema.parse(req.body);
+  await deleteExpiredUsers();
+  const blockedEmail = await prisma.blockedUserEmail.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  });
+  if (blockedEmail) {
+    throw new AppError(
+      409,
+      "هذا البريد انتهى تفعيله من قبل ولا يمكن تسجيله مرة أخرى",
+    );
+  }
   const passwordHash = await bcrypt.hash(input.password, 12);
   const startsAt = new Date();
-  const endsAt = activationEndsAt(input.activationPlan);
+  const endsAt = activationEndsAt(input.activationPlan, startsAt);
   const user = await prisma.user.upsert({
     where: { email: input.email },
     update: {
@@ -289,8 +504,10 @@ api.get("/players", async (req, res) => {
 api.post("/players", async (req, res) => {
   const ownerId = currentUserId(res);
   const input = playerSchema.parse(req.body);
-  const player = await createOwnedPlayer(ownerId, input);
-  res.status(201).json(player);
+  return sendIdempotent(req, res, ownerId, async () => ({
+    statusCode: 201,
+    body: await createOwnedPlayer(ownerId, input),
+  }));
 });
 
 api.get("/players/:id", async (req, res) => {
@@ -351,7 +568,9 @@ api.post("/subscriptions", async (req, res) => {
   const ownerId = currentUserId(res);
   const input = subscriptionSchema.parse(req.body);
   await ensureOwnedPlayer(input.playerId, ownerId);
-  const subscription = await prisma.$transaction(async (tx) => {
+  return sendIdempotent(req, res, ownerId, async () => ({
+    statusCode: 201,
+    body: await prisma.$transaction(async (tx) => {
     const created = await tx.subscription.create({
       data: { ...input, ownerId },
     });
@@ -368,9 +587,9 @@ api.post("/subscriptions", async (req, res) => {
         description: `اشتراك اللاعب ${input.playerId}`,
       },
     });
-    return created;
-  });
-  res.status(201).json(subscription);
+      return created;
+    }),
+  }));
 });
 
 api.put("/subscriptions/:id", async (req, res) => {
@@ -418,9 +637,10 @@ api.post("/evaluations", async (req, res) => {
   const ownerId = currentUserId(res);
   const input = evaluationSchema.parse(req.body);
   await ensureOwnedPlayer(input.playerId, ownerId);
-  res
-    .status(201)
-    .json(await prisma.evaluation.create({ data: { ...input, ownerId } }));
+  return sendIdempotent(req, res, ownerId, async () => ({
+    statusCode: 201,
+    body: await prisma.evaluation.create({ data: { ...input, ownerId } }),
+  }));
 });
 
 api.put("/evaluations/:id", async (req, res) => {
@@ -464,11 +684,12 @@ api.get("/finance/transactions", async (_req, res) => {
 api.post("/finance/transactions", async (req, res) => {
   const ownerId = currentUserId(res);
   const input = transactionSchema.parse(req.body);
-  res
-    .status(201)
-    .json(
-      await prisma.financeTransaction.create({ data: { ...input, ownerId } }),
-    );
+  return sendIdempotent(req, res, ownerId, async () => ({
+    statusCode: 201,
+    body: await prisma.financeTransaction.create({
+      data: { ...input, ownerId },
+    }),
+  }));
 });
 
 api.delete("/finance/transactions/:id", async (req, res) => {
@@ -497,18 +718,22 @@ api.post("/messages", async (req, res) => {
   const ownerId = currentUserId(res);
   const input = messageSchema.parse(req.body);
   if (input.playerId) await ensureOwnedPlayer(input.playerId, ownerId);
-  const scheduled = Boolean(
-    input.scheduledAt && input.scheduledAt > new Date(),
-  );
-  const message = await prisma.message.create({
-    data: {
-      ...input,
-      ownerId,
-      status: scheduled ? "scheduled" : "sent",
-      sentAt: scheduled ? null : new Date(),
-    },
+  return sendIdempotent(req, res, ownerId, async () => {
+    const scheduled = Boolean(
+      input.scheduledAt && input.scheduledAt > new Date(),
+    );
+    return {
+      statusCode: 201,
+      body: await prisma.message.create({
+        data: {
+          ...input,
+          ownerId,
+          status: scheduled ? "scheduled" : "sent",
+          sentAt: scheduled ? null : new Date(),
+        },
+      }),
+    };
   });
-  res.status(201).json(message);
 });
 
 api.delete("/messages/:id", async (req, res) => {

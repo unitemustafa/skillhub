@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:skillhub/core/theme/app_colors.dart';
+import 'package:skillhub/core/utils/snackbar_utils.dart';
 import 'package:skillhub/core/widgets/app_blue_page_header.dart';
 import 'package:skillhub/core/widgets/app_surface_card.dart';
-import 'package:skillhub/features/reports/presentation/widgets/report_options_bottom_sheet.dart';
+import 'package:skillhub/features/reports/data/report_exporter.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -15,6 +16,9 @@ class ReportsPage extends StatefulWidget {
 class _ReportsPageState extends State<ReportsPage> {
   String _selectedTimePeriod = 'كل الوقت';
   String _selectedStatus = 'الكل';
+  bool _isExporting = false;
+
+  static const _reportExporter = ReportExporter();
 
   static const List<String> _timePeriods = [
     'هذا الشهر',
@@ -88,8 +92,15 @@ class _ReportsPageState extends State<ReportsPage> {
                     (report) => [
                       _ReportCard(
                         report: report,
-                        onPdfPressed: () => _openReportOptions(report.title),
-                        onExcelPressed: () => _showExcelNotice(report.title),
+                        isExporting: _isExporting,
+                        onPdfPressed: () => _shareReport(
+                          report.title,
+                          format: _ReportExportFormat.pdf,
+                        ),
+                        onExcelPressed: () => _shareReport(
+                          report.title,
+                          format: _ReportExportFormat.excel,
+                        ),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -103,29 +114,40 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
-  void _openReportOptions(String title) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => ReportOptionsBottomSheet(reportTitle: title),
-    );
-  }
+  Future<void> _shareReport(
+    String title, {
+    required _ReportExportFormat format,
+  }) async {
+    if (_isExporting) {
+      return;
+    }
 
-  void _showExcelNotice(String title) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            'سيتم تجهيز ملف Excel لـ $title قريبًا',
-            textAlign: TextAlign.center,
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    setState(() => _isExporting = true);
+    final data = ReportExportData(
+      title: title,
+      timePeriod: _selectedTimePeriod,
+      status: _selectedStatus,
+    );
+
+    try {
+      switch (format) {
+        case _ReportExportFormat.pdf:
+          await _reportExporter.sharePdf(data);
+        case _ReportExportFormat.excel:
+          await _reportExporter.shareExcel(data);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      SnackbarUtils.showError(context, 'تعذر تجهيز الملف. حاول مرة أخرى.');
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
   }
 }
+
+enum _ReportExportFormat { pdf, excel }
 
 class _ReportFiltersCard extends StatelessWidget {
   const _ReportFiltersCard({
@@ -200,30 +222,39 @@ class _ReportFiltersCard extends StatelessWidget {
               ],
             ),
           ),
-          _FilterSection(
-            icon: Iconsax.calendar,
-            title: 'الفترة الزمنية',
-            selectedValue: selectedTimePeriod,
-            accentColor: AppColors.orange,
-            child: _FilterChipWrap(
-              values: timePeriods,
-              selectedValue: selectedTimePeriod,
-              selectedColor: AppColors.orange,
-              onChanged: onTimePeriodChanged,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _FilterSection(
-            icon: Iconsax.filter,
-            title: 'حالة الاشتراك',
-            selectedValue: selectedStatus,
-            accentColor: AppColors.accentBlueDark,
-            child: _FilterChipWrap(
-              values: statuses,
-              selectedValue: selectedStatus,
-              selectedColor: AppColors.accentBlueDark,
-              onChanged: onStatusChanged,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _FilterSection(
+                  icon: Iconsax.calendar,
+                  title: 'الفترة الزمنية',
+                  selectedValue: selectedTimePeriod,
+                  accentColor: AppColors.orange,
+                  child: _FilterChipWrap(
+                    values: timePeriods,
+                    selectedValue: selectedTimePeriod,
+                    selectedColor: AppColors.orange,
+                    onChanged: onTimePeriodChanged,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _FilterSection(
+                  icon: Iconsax.filter,
+                  title: 'حالة الاشتراك',
+                  selectedValue: selectedStatus,
+                  accentColor: AppColors.accentBlueDark,
+                  child: _FilterChipWrap(
+                    values: statuses,
+                    selectedValue: selectedStatus,
+                    selectedColor: AppColors.accentBlueDark,
+                    onChanged: onStatusChanged,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -275,6 +306,8 @@ class _FilterSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
                     fontWeight: FontWeight.w900,
@@ -327,7 +360,9 @@ class _FilterChipWrap extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final chipWidth = constraints.maxWidth >= 320
+        final chipWidth = constraints.maxWidth < 220
+            ? constraints.maxWidth
+            : constraints.maxWidth >= 320
             ? (constraints.maxWidth - 8) / 2
             : null;
 
@@ -414,11 +449,13 @@ class _SectionTitle extends StatelessWidget {
 class _ReportCard extends StatelessWidget {
   const _ReportCard({
     required this.report,
+    required this.isExporting,
     required this.onPdfPressed,
     required this.onExcelPressed,
   });
 
   final _ReportItem report;
+  final bool isExporting;
   final VoidCallback onPdfPressed;
   final VoidCallback onExcelPressed;
 
@@ -489,20 +526,14 @@ class _ReportCard extends StatelessWidget {
                 label: 'PDF',
                 icon: Iconsax.document_download,
                 color: AppColors.orange,
-                onPressed: onPdfPressed,
+                onPressed: isExporting ? null : onPdfPressed,
               );
               final excelButton = _ExportButton(
                 label: 'Excel',
                 icon: Iconsax.document_text,
                 color: AppColors.green,
-                onPressed: onExcelPressed,
+                onPressed: isExporting ? null : onExcelPressed,
               );
-
-              if (constraints.maxWidth < 300) {
-                return Column(
-                  children: [pdfButton, const SizedBox(height: 8), excelButton],
-                );
-              }
 
               return Row(
                 children: [
@@ -556,7 +587,7 @@ class _ExportButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

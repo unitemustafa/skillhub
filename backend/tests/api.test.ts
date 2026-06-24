@@ -1,3 +1,4 @@
+import { prisma } from "../src/db.js";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { app } from "../src/app.js";
@@ -89,6 +90,46 @@ describe("SkillHub API", () => {
     expect(response.body[0].stats.playersCount).toBeTypeOf("number");
   });
 
+  it("blocks recreating accounts deleted after activation expiry", async () => {
+    const email = `expired-${Date.now()}@skillhub.test`;
+    const createResponse = await request(app)
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Expired Account",
+        email,
+        password: "Secret123",
+        role: "user",
+        activationPlan: "monthly",
+      });
+    expect(createResponse.status).toBe(201);
+
+    await prisma.user.update({
+      where: { email },
+      data: { activationEndsAt: new Date(Date.now() - 1000) },
+    });
+
+    const usersResponse = await request(app)
+      .get("/api/v1/users")
+      .set("Authorization", `Bearer ${token}`);
+    expect(usersResponse.status).toBe(200);
+    expect(
+      usersResponse.body.some((user: { email: string }) => user.email === email),
+    ).toBe(false);
+
+    const recreateResponse = await request(app)
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Expired Account Again",
+        email,
+        password: "Secret123",
+        role: "user",
+        activationPlan: "monthly",
+      });
+    expect(recreateResponse.status).toBe(409);
+  }, 15000);
+
   it("keeps player data scoped to the authenticated account", async () => {
     const initialList = await request(app)
       .get("/api/v1/players")
@@ -128,5 +169,98 @@ describe("SkillHub API", () => {
       .get(`/api/v1/players/${created.body.id}`)
       .set("Authorization", `Bearer ${token}`);
     expect(crossAccountRead.status).toBe(404);
+  }, 15000);
+
+  it("returns a sync snapshot scoped to the authenticated account", async () => {
+    const isolatedSnapshot = await request(app)
+      .get("/api/v1/sync/snapshot")
+      .set("Authorization", `Bearer ${isolatedToken}`);
+    expect(isolatedSnapshot.status).toBe(200);
+    expect(isolatedSnapshot.body.serverTime).toBeTruthy();
+    expect(isolatedSnapshot.body.snapshotGeneratedAt).toBeTruthy();
+    expect(
+      isolatedSnapshot.body.players.every(
+        (player: { ownerId: string }) => player.ownerId !== undefined,
+      ),
+    ).toBe(true);
+
+    const adminSnapshot = await request(app)
+      .get("/api/v1/sync/snapshot")
+      .set("Authorization", `Bearer ${token}`);
+    expect(adminSnapshot.status).toBe(200);
+    const isolatedIds = new Set(
+      isolatedSnapshot.body.players.map((player: { id: string }) => player.id),
+    );
+    expect(
+      adminSnapshot.body.players.some((player: { id: string }) =>
+        isolatedIds.has(player.id),
+      ),
+    ).toBe(false);
+  }, 15000);
+
+  it("rejects sync snapshots for expired accounts", async () => {
+    const email = `snapshot-expired-${Date.now()}@skillhub.test`;
+    const createResponse = await request(app)
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Expired Snapshot Account",
+        email,
+        password: "Secret123",
+        role: "user",
+        activationPlan: "monthly",
+      });
+    expect(createResponse.status).toBe(201);
+
+    const loginResponse = await request(app).post("/api/v1/auth/login").send({
+      email,
+      password: "Secret123",
+    });
+    expect(loginResponse.status).toBe(200);
+
+    await prisma.user.update({
+      where: { email },
+      data: { activationEndsAt: new Date(Date.now() - 1000) },
+    });
+
+    const snapshot = await request(app)
+      .get("/api/v1/sync/snapshot")
+      .set("Authorization", `Bearer ${loginResponse.body.token}`);
+    expect(snapshot.status).toBe(403);
+  }, 15000);
+
+  it("uses Idempotency-Key to avoid duplicate finance transactions", async () => {
+    const idempotencyKey = `finance-${Date.now()}`;
+    const payload = {
+      type: "income",
+      category: "manual",
+      amount: 123,
+      description: `Idempotent finance ${Date.now()}`,
+    };
+
+    const first = await request(app)
+      .post("/api/v1/finance/transactions")
+      .set("Authorization", `Bearer ${isolatedToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+    const second = await request(app)
+      .post("/api/v1/finance/transactions")
+      .set("Authorization", `Bearer ${isolatedToken}`)
+      .set("Idempotency-Key", idempotencyKey)
+      .send(payload);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.id).toBe(first.body.id);
+
+    const transactions = await request(app)
+      .get("/api/v1/finance/transactions")
+      .set("Authorization", `Bearer ${isolatedToken}`);
+    expect(
+      transactions.body.filter(
+        (item: { description: string }) =>
+          item.description === payload.description,
+      ),
+    ).toHaveLength(1);
   }, 15000);
 });
